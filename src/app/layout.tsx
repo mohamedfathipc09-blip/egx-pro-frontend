@@ -23,7 +23,7 @@ export default function RootLayout({
         <aside className="w-64 bg-white shadow-xl border-l border-gray-200 fixed top-0 right-0 h-screen z-50 flex flex-col">
           {/* اللوجو */}
           <div className="p-6 border-b border-gray-100 flex items-center gap-3">
-            <span className="text-3xl">🚀</span>
+            <img src="/my-logo.png" alt="EGX Pro Logo" className="w-10 h-10 object-contain" />
             <h1 className="text-2xl font-extrabold text-blue-700 tracking-tight">EGX Pro</h1>
           </div>
           
@@ -50,7 +50,7 @@ export default function RootLayout({
               <span className="text-xl">🧠</span> التوصيات
             </Link>
 
-            {/* 👇 اللينك الجديد لمحفظة المتابعة 👇 */}
+            {/* محفظة المتابعة */}
             <Link 
               href="/watchlist" 
               className="flex items-center gap-3 font-bold text-gray-600 hover:text-orange-700 hover:bg-orange-50 p-3 rounded-xl transition-all"
@@ -66,7 +66,6 @@ export default function RootLayout({
         </aside>
 
         {/* محتوى الصفحات الديناميكي */}
-        {/* mr-64: لترك مساحة 64 (256px) من اليمين لتفادي التداخل مع القائمة الجانبية */}
         <main className="flex-1 mr-64 p-8">
           <div className="max-w-5xl mx-auto">
             {children}
