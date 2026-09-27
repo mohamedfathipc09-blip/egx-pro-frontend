@@ -7,8 +7,11 @@ import Image from 'next/image'; // 👈 استيراد مكون الصور من 
 const cairo = Cairo({ subsets: ['arabic'] });
 
 export const metadata: Metadata = {
-  title: 'EGX Pro Analyzer',
-  description: 'منصة التحليل الفني الذكي للبورصة المصرية',
+  title: "EGX Pro Analyzer",
+  description: "منصة تحليل أسهم البورصة المصرية",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({
