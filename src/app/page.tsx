@@ -116,27 +116,40 @@ function AnalysisContent() {
       {data && (
         <div className="flex flex-col gap-8 animate-fade-in">
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center">
+            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center flex flex-col justify-center">
               <p className="text-sm text-gray-500">السعر الحالي</p>
-              <p className="text-2xl font-bold text-gray-800">{data.summary.current_price}</p>
+              <p className="text-2xl font-bold text-gray-800 mt-1">{data.summary.current_price}</p>
             </div>
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center">
+            
+            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center flex flex-col justify-center">
               <p className="text-sm text-gray-500">الاتجاه العام</p>
-              <p className={`text-xl font-bold ${data.summary.trend.includes('صاعد') ? 'text-green-600' : 'text-red-600'}`}>
+              <p className={`text-xl font-bold mt-1 ${data.summary.trend.includes('صاعد') ? 'text-green-600' : 'text-red-600'}`}>
                 {data.summary.trend}
               </p>
             </div>
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-center">
-              <p className="text-sm text-gray-500">دعم / مقاومة (فيبو)</p>
-              <p className="text-lg font-bold text-gray-700" dir="ltr">
-                {data.summary.nearest_support} / {data.summary.nearest_resistance}
-              </p>
+            
+            {/* 👈 الكارت المعدل للدعم والمقاومة */}
+            <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 flex flex-col justify-between">
+              <p className="text-sm text-gray-500 text-center font-bold mb-2">الدعم والمقاومة</p>
+              <div className="flex justify-between items-center px-2">
+                <div className="text-center">
+                  <span className="block text-[10px] text-green-600 font-bold mb-0.5">دعم 🟢</span>
+                  <span className="block text-lg font-black text-green-700" dir="ltr">{data.summary.nearest_support}</span>
+                </div>
+                <div className="w-px h-8 bg-gray-300"></div> {/* خط فاصل */}
+                <div className="text-center">
+                  <span className="block text-[10px] text-red-600 font-bold mb-0.5">🔴 مقاومة</span>
+                  <span className="block text-lg font-black text-red-700" dir="ltr">{data.summary.nearest_resistance}</span>
+                </div>
+              </div>
             </div>
-            <div className="bg-green-50 p-4 rounded-lg border border-green-200 text-center">
+            
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200 text-center flex flex-col justify-center">
               <p className="text-sm text-green-700 font-bold">المستهدف القادم 🎯</p>
-              <p className="text-2xl font-bold text-green-700">{data.summary.target}</p>
+              <p className="text-2xl font-bold text-green-700 mt-1">{data.summary.target}</p>
             </div>
-            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 text-center">
+            
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 text-center flex flex-col justify-center">
               <p className="text-xs text-blue-600 font-bold mb-1">القرار {getIntervalLabel(interval)}</p>
               <p className={`text-xl font-bold ${data.summary.score >= 5 ? 'text-green-600' : 'text-red-600'}`}>
                 {data.summary.action}
