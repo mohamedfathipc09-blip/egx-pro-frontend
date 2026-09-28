@@ -36,8 +36,13 @@ function AnalysisContent() {
       const res = await fetch(`${baseUrl}/api/analyze/${targetSymbol}?interval=${interval}`);
       if (!res.ok) throw new Error('فشل جلب البيانات، تأكد من كود السهم.');
       const result = await res.json();
+      
+      // 👈 حماية من تعليق الواجهة لو الباك إند رجع بيانات فارغة
+      if (!result || !result.summary || !result.summary.action) {
+         throw new Error('لا توجد بيانات كافية لتحليل هذا السهم حالياً.');
+      }
+      
       setData(result);
-
       fetchBacktest(targetSymbol, baseUrl);
     } catch (err: any) {
       setError(err.message || 'حدث خطأ غير متوقع أثناء التحليل.');
@@ -103,7 +108,6 @@ function AnalysisContent() {
     return "عرضي ➔";
   };
 
-  // 👈 دالة جديدة لإجبار ترجمة القرار الفني للعربي
   const getActionArabic = (action: string) => {
     if (!action) return "محايد";
     const upperAction = action.toUpperCase();
@@ -121,7 +125,24 @@ function AnalysisContent() {
           <span className="text-4xl">📊</span> غرفة التحليل الكمّي
         </h1>
         
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
+        {/* 👈 أزرار الفريمات الزمنية تم إرجاعها هنا */}
+        <div className="flex flex-wrap justify-center gap-3 mb-6">
+          {['15m', '1h', '1d', '1wk', '1mo'].map((intv) => (
+            <button
+              key={intv}
+              onClick={() => setInterval(intv)}
+              className={`px-6 py-2.5 rounded-xl font-black text-sm transition-all duration-200 ${
+                interval === intv 
+                  ? 'bg-blue-100 text-blue-800 border-2 border-blue-600 shadow-sm' 
+                  : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {intv === '15m' ? '15 دقيقة' : intv === '1h' ? 'ساعة' : intv === '1d' ? 'يومي' : intv === '1wk' ? 'أسبوعي' : 'شهري'}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-4">
           <input 
             type="text" 
             value={symbol}
@@ -142,13 +163,13 @@ function AnalysisContent() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg mb-6 flex items-center gap-3 shadow-sm">
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg mb-6 flex items-center gap-3 shadow-sm animate-fade-in">
           <span className="text-2xl">⚠️</span>
           <p className="text-red-700 font-bold">{error}</p>
         </div>
       )}
 
-      {data && data.summary && (
+      {data && data.summary && data.summary.action && (
         <div className="flex flex-col gap-6 animate-fade-in">
           
           {/* Dashboard العلوية */}
@@ -172,7 +193,6 @@ function AnalysisContent() {
               </p>
             </div>
             
-            {/* 👈 تم فصل الدعم والمقاومة لمنع تداخل اتجاه الخط (RTL/LTR) */}
             <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-center">
               <div className="flex justify-between items-center w-full px-2">
                 <div className="text-center">
@@ -187,7 +207,6 @@ function AnalysisContent() {
               </div>
             </div>
             
-            {/* 👈 تطبيق الترجمة العربية الإجبارية */}
             <div className={`p-5 rounded-2xl border shadow-sm text-center flex flex-col justify-center ${
               getActionArabic(data.summary.action).includes('شراء') ? 'bg-green-600 border-green-700 text-white' :
               getActionArabic(data.summary.action).includes('خروج') || getActionArabic(data.summary.action).includes('سلبي') || getActionArabic(data.summary.action).includes('بيع') ? 'bg-red-600 border-red-700 text-white' :
