@@ -9,6 +9,9 @@ function AnalysisContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState<any>(null);
+  
+  const [backtestData, setBacktestData] = useState<any>(null);
+  const [loadingBacktest, setLoadingBacktest] = useState(false);
 
   const searchParams = useSearchParams();
   const urlSymbol = searchParams.get('symbol');
@@ -24,16 +27,37 @@ function AnalysisContent() {
     setLoading(true);
     setError('');
     setData(null);
+    setBacktestData(null);
 
     try {
-      const res = await fetch(`https://egx-pro-api.onrender.com/api/analyze/${targetSymbol}?interval=${interval}`);
+      const isLocal = window.location.hostname === 'localhost';
+      const baseUrl = isLocal ? 'http://localhost:8000' : 'https://egx-pro-api.onrender.com';
+      
+      const res = await fetch(`${baseUrl}/api/analyze/${targetSymbol}?interval=${interval}`);
       if (!res.ok) throw new Error('فشل جلب البيانات، تأكد من كود السهم.');
       const result = await res.json();
       setData(result);
+
+      fetchBacktest(targetSymbol, baseUrl);
     } catch (err: any) {
       setError(err.message || 'حدث خطأ غير متوقع أثناء التحليل.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchBacktest = async (targetSymbol: string, baseUrl: string) => {
+    setLoadingBacktest(true);
+    try {
+      const res = await fetch(`${baseUrl}/api/backtest/${targetSymbol}`);
+      if (res.ok) {
+        const result = await res.json();
+        setBacktestData(result);
+      }
+    } catch (err) {
+      console.error("خطأ في جلب بيانات الاختبار التاريخي", err);
+    } finally {
+      setLoadingBacktest(false);
     }
   };
 
@@ -45,23 +69,14 @@ function AnalysisContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSymbol]);
 
-  // دالة ذكية لترجمة وتنسيق الماركداون وعرضه بشكل جمالي
   const renderReport = (text: string) => {
     if (!text) return null;
-    
-    // إصلاح مشكلة عدم وجود مسافات من الـ AI
     const cleanText = text.replace(/##/g, '\n##').replace(/- \*\*/g, '\n- **');
-    
     return cleanText.split('\n').map((line, idx) => {
       const t = line.trim();
       if (!t) return null;
-      
-      if (t.startsWith('## ')) {
-        return <h3 key={idx} className="text-xl font-black text-blue-900 mt-8 mb-4 border-b-2 border-blue-100 pb-2">{t.replace('## ', '')}</h3>;
-      }
-      if (t.startsWith('# ')) {
-        return <h2 key={idx} className="text-2xl font-black text-gray-800 mb-6 bg-gray-100 p-4 rounded-xl border-r-4 border-blue-600 shadow-sm">{t.replace('# ', '')}</h2>;
-      }
+      if (t.startsWith('## ')) return <h3 key={idx} className="text-xl font-black text-blue-900 mt-8 mb-4 border-b-2 border-blue-100 pb-2">{t.replace('## ', '')}</h3>;
+      if (t.startsWith('# ')) return <h2 key={idx} className="text-2xl font-black text-gray-800 mb-6 bg-gray-100 p-4 rounded-xl border-r-4 border-blue-600 shadow-sm">{t.replace('# ', '')}</h2>;
       if (t.startsWith('- **')) {
         const parts = t.split('**');
         return (
@@ -79,6 +94,24 @@ function AnalysisContent() {
       }
       return <p key={idx} className="text-gray-800 leading-relaxed mb-4 font-medium text-lg">{t}</p>;
     });
+  };
+
+  const getTrendArabic = (trend: string) => {
+    if (!trend) return "غير واضح";
+    if (trend.includes("UP")) return "صاعد ↗";
+    if (trend.includes("DOWN")) return "هابط ↘";
+    return "عرضي ➔";
+  };
+
+  // 👈 دالة جديدة لإجبار ترجمة القرار الفني للعربي
+  const getActionArabic = (action: string) => {
+    if (!action) return "محايد";
+    const upperAction = action.toUpperCase();
+    if (upperAction.includes("STRONG BUY") || action.includes("شراء قوي")) return "شراء قوي 🚀";
+    if (upperAction === "BUY" || action.includes("مرجح")) return "شراء مرجح 🟢";
+    if (upperAction.includes("STRONG SELL") || action.includes("خروج") || action.includes("تجنب")) return "خروج / تجنب 🛑";
+    if (upperAction === "SELL" || action.includes("سلبي")) return "سلبي / بيع 🔴";
+    return action;
   };
 
   return (
@@ -106,33 +139,6 @@ function AnalysisContent() {
             {loading ? <><span className="animate-spin text-xl">⏳</span> جاري المعالجة...</> : <><span className="text-xl">⚡</span> حلل السهم الآن</>}
           </button>
         </div>
-
-        <div className="flex justify-center gap-2 flex-wrap">
-          {[
-            { label: "15 دقيقة", val: "15m" },
-            { label: "ساعة", val: "1h" },
-            { label: "يومي", val: "1d" },
-            { label: "أسبوعي", val: "1wk" },
-            { label: "شهري", val: "1mo" },
-          ].map((tf) => (
-            <button
-              key={tf.val}
-              onClick={() => {
-                setInterval(tf.val);
-                if (symbol && data) {
-                  setTimeout(() => document.getElementById("analyze-btn")?.click(), 100);
-                }
-              }}
-              className={`px-5 py-2.5 rounded-lg font-bold transition-all border-2 ${
-                interval === tf.val 
-                  ? "bg-blue-50 text-blue-700 border-blue-600 shadow-sm" 
-                  : "bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:bg-blue-50/50"
-              }`}
-            >
-              {tf.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {error && (
@@ -146,12 +152,19 @@ function AnalysisContent() {
         <div className="flex flex-col gap-6 animate-fade-in">
           
           {/* Dashboard العلوية */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm text-center relative overflow-hidden">
               <p className="text-sm text-gray-500 font-bold mb-2">السعر الحالي</p>
               <p className="text-3xl font-black text-gray-800" dir="ltr">{data.summary.current_price}</p>
             </div>
             
+            <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm text-center relative overflow-hidden">
+              <p className="text-sm text-gray-500 font-bold mb-2">الاتجاه العام</p>
+              <p className={`text-2xl font-black mt-1 ${data.summary.trend?.includes('UP') ? 'text-green-600' : data.summary.trend?.includes('DOWN') ? 'text-red-600' : 'text-gray-600'}`}>
+                {getTrendArabic(data.summary.trend)}
+              </p>
+            </div>
+
             <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm text-center relative overflow-hidden">
               <p className="text-sm text-gray-500 font-bold mb-2">التقييم الكمّي (Score)</p>
               <p className={`text-3xl font-black ${data.summary.score >= 70 ? 'text-green-600' : data.summary.score <= 45 ? 'text-red-600' : 'text-orange-600'}`} dir="ltr">
@@ -159,24 +172,67 @@ function AnalysisContent() {
               </p>
             </div>
             
-            <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm text-center">
-              <p className="text-sm text-gray-500 font-bold mb-2">الدعم 🟢 / المقاومة 🔴</p>
-              <p className="text-xl font-black text-gray-800" dir="ltr">
-                <span className="text-green-600">{data.summary.nearest_support || 'N/A'}</span>
-                <span className="mx-2 text-gray-300">|</span>
-                <span className="text-red-600">{data.summary.nearest_resistance || 'N/A'}</span>
-              </p>
+            {/* 👈 تم فصل الدعم والمقاومة لمنع تداخل اتجاه الخط (RTL/LTR) */}
+            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-center">
+              <div className="flex justify-between items-center w-full px-2">
+                <div className="text-center">
+                  <p className="text-xs text-green-600 font-bold mb-1">الدعم 🟢</p>
+                  <p className="text-xl font-black text-gray-800" dir="ltr">{data.summary.nearest_support || 'N/A'}</p>
+                </div>
+                <div className="h-8 w-px bg-gray-200 mx-1"></div>
+                <div className="text-center">
+                  <p className="text-xs text-red-600 font-bold mb-1">المقاومة 🔴</p>
+                  <p className="text-xl font-black text-gray-800" dir="ltr">{data.summary.nearest_resistance || 'N/A'}</p>
+                </div>
+              </div>
             </div>
             
+            {/* 👈 تطبيق الترجمة العربية الإجبارية */}
             <div className={`p-5 rounded-2xl border shadow-sm text-center flex flex-col justify-center ${
-              data.summary.action.includes('شراء') ? 'bg-green-600 border-green-700 text-white' :
-              data.summary.action.includes('خروج') || data.summary.action.includes('تجنب') ? 'bg-red-600 border-red-700 text-white' :
+              getActionArabic(data.summary.action).includes('شراء') ? 'bg-green-600 border-green-700 text-white' :
+              getActionArabic(data.summary.action).includes('خروج') || getActionArabic(data.summary.action).includes('سلبي') || getActionArabic(data.summary.action).includes('بيع') ? 'bg-red-600 border-red-700 text-white' :
               'bg-orange-500 border-orange-600 text-white'
             }`}>
               <p className="text-sm font-bold opacity-90 mb-1">القرار الفني</p>
-              <p className="text-2xl font-black">{data.summary.action}</p>
+              <p className="text-xl font-black leading-tight">{getActionArabic(data.summary.action)}</p>
             </div>
           </div>
+
+          {/* قسم الاختبار التاريخي (Backtest Results) */}
+          {loadingBacktest ? (
+             <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm text-center animate-pulse">
+               <p className="text-gray-500 font-bold">⏳ جاري إجراء الاختبار التاريخي للاستراتيجية (Backtesting)...</p>
+             </div>
+          ) : backtestData && backtestData.status === 'success' && backtestData.metrics && (
+            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-700 shadow-lg relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 opacity-10 text-6xl">🕰️</div>
+              <h3 className="text-sm font-black text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <span>⚡</span> أداء الاستراتيجية تاريخياً (Institutional Backtest)
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 relative z-10">
+                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
+                  <p className="text-xs text-slate-400 font-bold mb-1">نسبة النجاح (Win Rate)</p>
+                  <p className={`text-2xl font-black ${backtestData.metrics.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'}`} dir="ltr">{backtestData.metrics.win_rate_pct}%</p>
+                </div>
+                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
+                  <p className="text-xs text-slate-400 font-bold mb-1">عامل الربح (Profit Factor)</p>
+                  <p className="text-2xl font-black text-blue-400" dir="ltr">{backtestData.metrics.profit_factor}</p>
+                </div>
+                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
+                  <p className="text-xs text-slate-400 font-bold mb-1">أقصى تراجع (Max Drawdown)</p>
+                  <p className="text-2xl font-black text-red-400" dir="ltr">{backtestData.metrics.max_drawdown_pct}%</p>
+                </div>
+                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
+                  <p className="text-xs text-slate-400 font-bold mb-1">عائد الاستثمار (Return)</p>
+                  <p className={`text-2xl font-black ${backtestData.metrics.return_pct > 0 ? 'text-green-400' : 'text-red-400'}`} dir="ltr">{backtestData.metrics.return_pct}%</p>
+                </div>
+                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
+                  <p className="text-xs text-slate-400 font-bold mb-1">إجمالي الصفقات</p>
+                  <p className="text-2xl font-black text-slate-100" dir="ltr">{backtestData.metrics.total_trades}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* تفصيل نقاط التقييم (Quant Scores Breakdown) */}
           {data.summary.details && data.summary.details.length > 0 && (
@@ -202,11 +258,10 @@ function AnalysisContent() {
              <StockChart symbol={data.symbol.replace('.CA', '')} interval={interval} />
           </div>
 
-          {/* 👈 التقرير تم نقله للأسفل وأصبح يعرض بعرض الشاشة بالكامل */}
+          {/* تقرير الذكاء الاصطناعي */}
           {data.summary.report_text && (
             <div className="bg-white p-6 md:p-10 rounded-2xl border border-gray-200 shadow-md mt-4 relative overflow-hidden">
               <div className="absolute top-4 left-4 text-6xl opacity-10 select-none pointer-events-none">📝</div>
-              
               <div className="relative z-10 w-full max-w-5xl mx-auto">
                 {renderReport(data.summary.report_text)}
               </div>
