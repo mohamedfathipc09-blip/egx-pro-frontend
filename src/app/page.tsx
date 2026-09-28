@@ -16,8 +16,10 @@ function AnalysisContent() {
   const searchParams = useSearchParams();
   const urlSymbol = searchParams.get('symbol');
 
-  const analyzeStock = async (overrideSymbol?: string) => {
+  // 👈 الدالة بقت تقبل overrideInterval عشان تتحدث فوراً
+  const analyzeStock = async (overrideSymbol?: string, overrideInterval?: string) => {
     const targetSymbol = overrideSymbol || symbol;
+    const targetInterval = overrideInterval || interval;
     
     if (!targetSymbol) {
       setError('يرجى إدخال كود السهم أولاً');
@@ -33,11 +35,10 @@ function AnalysisContent() {
       const isLocal = window.location.hostname === 'localhost';
       const baseUrl = isLocal ? 'http://localhost:8000' : 'https://egx-pro-api.onrender.com';
       
-      const res = await fetch(`${baseUrl}/api/analyze/${targetSymbol}?interval=${interval}`);
+      const res = await fetch(`${baseUrl}/api/analyze/${targetSymbol}?interval=${targetInterval}`);
       if (!res.ok) throw new Error('فشل جلب البيانات، تأكد من كود السهم.');
       const result = await res.json();
       
-      // 👈 حماية من تعليق الواجهة لو الباك إند رجع بيانات فارغة
       if (!result || !result.summary || !result.summary.action) {
          throw new Error('لا توجد بيانات كافية لتحليل هذا السهم حالياً.');
       }
@@ -125,12 +126,17 @@ function AnalysisContent() {
           <span className="text-4xl">📊</span> غرفة التحليل الكمّي
         </h1>
         
-        {/* 👈 أزرار الفريمات الزمنية تم إرجاعها هنا */}
         <div className="flex flex-wrap justify-center gap-3 mb-6">
           {['15m', '1h', '1d', '1wk', '1mo'].map((intv) => (
             <button
               key={intv}
-              onClick={() => setInterval(intv)}
+              onClick={() => {
+                setInterval(intv);
+                // 👈 تحديث التحليل فوراً لو فيه سهم مكتوب
+                if (symbol) {
+                  analyzeStock(symbol, intv);
+                }
+              }}
               className={`px-6 py-2.5 rounded-xl font-black text-sm transition-all duration-200 ${
                 interval === intv 
                   ? 'bg-blue-100 text-blue-800 border-2 border-blue-600 shadow-sm' 
