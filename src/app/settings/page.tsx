@@ -1,196 +1,252 @@
-"use client";
+'use client';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import StockChart from '@/components/StockChart'; 
 
-import { useState, useEffect } from 'react';
+// فصلنا المحتوى في مكون داخلي عشان نقدر نغلفه بـ Suspense (مهم جداً في Next.js)
+function AnalysisContent() {
+  const [symbol, setSymbol] = useState('');
+  const [interval, setInterval] = useState('1d');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [data, setData] = useState<any>(null);
 
-interface RiskSettings {
-  capital: number;
-  risk_per_trade: number;
-  max_open_trades: number;
-  max_total_risk: number;
-  min_rr: number;
-}
+  const searchParams = useSearchParams();
+  const urlSymbol = searchParams.get('symbol');
 
-export default function SettingsPage() {
-  const [settings, setSettings] = useState<RiskSettings>({
-    capital: 100000,
-    risk_per_trade: 2.0,
-    max_open_trades: 8,
-    max_total_risk: 20.0,
-    min_rr: 1.5
-  });
-  
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
-
-  const API_URL = 'https://egx-pro-api.onrender.com/api/settings';
-
-  useEffect(() => {
-    // جلب الإعدادات الحالية من الباك إند
-    const fetchSettings = async () => {
-      try {
-        const res = await fetch(API_URL);
-        if (res.ok) {
-          const data = await res.json();
-          setSettings(data);
-        }
-      } catch (error) {
-        console.error("خطأ في جلب الإعدادات:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSettings();
-  }, []);
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setMessage(null);
+  const analyzeStock = async (overrideSymbol?: string) => {
+    const targetSymbol = overrideSymbol || symbol;
+    
+    if (!targetSymbol) {
+      setError('يرجى إدخال كود السهم أولاً');
+      return;
+    }
+    
+    setLoading(true);
+    setError('');
+    setData(null);
 
     try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
-
-      if (res.ok) {
-        setMessage({ type: 'success', text: 'تم حفظ الإعدادات بنجاح! البوت سيستخدمها الآن.' });
-        setTimeout(() => setMessage(null), 4000);
-      } else {
-        setMessage({ type: 'error', text: 'حدث خطأ أثناء حفظ الإعدادات.' });
-      }
-    } catch (error) {
-      setMessage({ type: 'error', text: 'تعذر الاتصال بالسيرفر.' });
+      const res = await fetch(`https://egx-pro-api.onrender.com/api/analyze/${targetSymbol}?interval=${interval}`);
+      if (!res.ok) throw new Error('فشل جلب البيانات، تأكد من كود السهم أو استجابة السيرفر.');
+      const result = await res.json();
+      setData(result);
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ غير متوقع أثناء التحليل.');
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setSettings(prev => ({
-      ...prev,
-      [name]: parseFloat(value) || 0
-    }));
+  useEffect(() => {
+    if (urlSymbol) {
+      setSymbol(urlSymbol);
+      analyzeStock(urlSymbol);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSymbol]);
+
+  const getIntervalLabel = (val: string) => {
+    switch(val) {
+      case "15m": return "للمضاربة (15د)";
+      case "1h": return "للمضاربة (ساعة)";
+      case "1d": return "يومي (سوينج)";
+      case "1wk": return "أسبوعي (متوسط)";
+      case "1mo": return "شهري (استثماري)";
+      default: return "";
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-[70vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-orange-500"></div>
-      </div>
-    );
-  }
+  // 👈 دالة سحرية لترجمة الماركداون القادم من AI لتصميم احترافي
+  const renderReport = (text: string) => {
+    if (!text) return null;
+    return text.split('\n').map((line, idx) => {
+      if (line.startsWith('## ')) {
+        return <h3 key={idx} className="text-lg font-black text-blue-900 mt-6 mb-3 border-b-2 border-blue-100 pb-1">{line.replace('## ', '')}</h3>;
+      }
+      if (line.startsWith('# ')) {
+        return <h2 key={idx} className="text-2xl font-black text-gray-800 mb-6 bg-gray-100 p-3 rounded-lg border-r-4 border-blue-600">{line.replace('# ', '')}</h2>;
+      }
+      if (line.startsWith('- **')) {
+        const parts = line.split('**');
+        return (
+          <li key={idx} className="mr-6 mb-2 text-gray-700 flex items-start gap-2">
+            <span className="text-blue-500 mt-1">▪</span>
+            <span><span className="font-bold text-gray-900">{parts[1]}</span>{parts[2]}</span>
+          </li>
+        );
+      }
+      if (line.startsWith('- ')) {
+        return <li key={idx} className="mr-6 mb-2 text-gray-700 flex items-start gap-2">
+          <span className="text-gray-400 mt-1">▪</span>
+          <span>{line.replace('- ', '')}</span>
+        </li>;
+      }
+      if (line.trim() === '') {
+        return <div key={idx} className="h-2"></div>;
+      }
+      return <p key={idx} className="text-gray-700 leading-relaxed mb-3 font-medium">{line}</p>;
+    });
+  };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-      <div className="border-b border-gray-200 pb-5">
-        <h1 className="text-3xl font-extrabold text-gray-900 flex items-center gap-3">
-          <span className="text-4xl">⚙️</span> إعدادات إدارة المخاطر
+    <div className="bg-gray-50 p-4 md:p-8 rounded-xl border border-gray-200 shadow-sm min-h-screen">
+      <div className="bg-white p-6 rounded-2xl shadow-sm mb-6 border border-gray-100">
+        <h1 className="text-3xl font-black text-gray-800 mb-6 flex items-center gap-3">
+          <span className="text-4xl">📊</span> غرفة التحليل الكمّي (Quant Engine)
         </h1>
-        <p className="text-gray-500 mt-2">
-          يستخدم المساعد الآلي (Telegram Bot) هذه الإعدادات لتحديد حجم صفقاتك وحساب كمية الأسهم المناسبة لتوصيات الشراء.
-        </p>
+        
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
+          <input 
+            type="text" 
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+            placeholder="أدخل كود السهم (مثل: COMI)"
+            className="flex-1 border-2 border-gray-200 p-4 rounded-xl text-center font-black text-xl uppercase focus:outline-none focus:border-blue-600 bg-gray-50 transition-colors"
+            onKeyDown={(e) => e.key === 'Enter' && analyzeStock()}
+          />
+          <button 
+            id="analyze-btn"
+            onClick={() => analyzeStock()}
+            disabled={loading}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-10 rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
+          >
+            {loading ? <><span className="animate-spin text-xl">⏳</span> جاري المعالجة...</> : <><span className="text-xl">⚡</span> حلل السهم الآن</>}
+          </button>
+        </div>
+
+        <div className="flex justify-center gap-2 flex-wrap">
+          {[
+            { label: "15 دقيقة", val: "15m" },
+            { label: "ساعة", val: "1h" },
+            { label: "يومي", val: "1d" },
+            { label: "أسبوعي", val: "1wk" },
+            { label: "شهري", val: "1mo" },
+          ].map((tf) => (
+            <button
+              key={tf.val}
+              onClick={() => {
+                setInterval(tf.val);
+                if (symbol && data) {
+                  setTimeout(() => document.getElementById("analyze-btn")?.click(), 100);
+                }
+              }}
+              className={`px-5 py-2.5 rounded-lg font-bold transition-all border-2 ${
+                interval === tf.val 
+                  ? "bg-blue-50 text-blue-700 border-blue-600 shadow-sm" 
+                  : "bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:bg-blue-50/50"
+              }`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {message && (
-        <div className={`p-4 rounded-xl font-bold flex items-center gap-3 ${
-          message.type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-red-100 text-red-800 border border-red-200'
-        }`}>
-          <span className="text-xl">{message.type === 'success' ? '✅' : '❌'}</span>
-          {message.text}
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg mb-6 flex items-center gap-3 shadow-sm">
+          <span className="text-2xl">⚠️</span>
+          <p className="text-red-700 font-bold">{error}</p>
         </div>
       )}
 
-      <form onSubmit={handleSave} className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 space-y-8">
-        
-        {/* رأس المال والمخاطرة */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="space-y-2">
-            <label className="block font-bold text-gray-700">إجمالي رأس المال (ج.م)</label>
-            <div className="relative">
-              <input 
-                type="number" 
-                name="capital"
-                value={settings.capital}
-                onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all font-bold text-lg"
-                required
-              />
-              <span className="absolute left-4 top-3.5 text-gray-400 font-bold">EGP</span>
+      {data && data.summary && (
+        <div className="flex flex-col gap-6 animate-fade-in">
+          {/* لوحة المؤشرات العلوية (Top Dashboard) */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm text-center flex flex-col justify-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-full h-1 bg-gray-200"></div>
+              <p className="text-sm text-gray-500 font-bold mb-1">السعر الحالي</p>
+              <p className="text-3xl font-black text-gray-800" dir="ltr">{data.summary.current_price}</p>
             </div>
-            <p className="text-xs text-gray-500">سيتم حساب حجم الصفقة بناءً على هذا الرقم.</p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="block font-bold text-gray-700">المخاطرة في الصفقة الواحدة (%)</label>
-            <div className="relative">
-              <input 
-                type="number"
-                step="0.1" 
-                name="risk_per_trade"
-                value={settings.risk_per_trade}
-                onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all font-bold text-lg"
-                required
-              />
-              <span className="absolute left-4 top-3.5 text-gray-400 font-bold">%</span>
+            
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm text-center flex flex-col justify-center relative overflow-hidden">
+              <div className={`absolute top-0 right-0 w-full h-1 ${data.summary.score >= 70 ? 'bg-green-500' : data.summary.score <= 45 ? 'bg-red-500' : 'bg-orange-500'}`}></div>
+              <p className="text-sm text-gray-500 font-bold mb-1">التقييم الكمّي (Score)</p>
+              <p className={`text-3xl font-black ${data.summary.score >= 70 ? 'text-green-600' : data.summary.score <= 45 ? 'text-red-600' : 'text-orange-600'}`} dir="ltr">
+                {data.summary.score} <span className="text-sm text-gray-400">/ 100</span>
+              </p>
             </div>
-            <p className="text-xs text-gray-500">النسبة المئوية من رأس المال التي أنت مستعد لخسارتها إذا ضُرب الوقف.</p>
+            
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
+              <p className="text-xs text-gray-400 text-center font-bold mb-3 uppercase tracking-wider">Zones</p>
+              <div className="flex justify-between items-center px-1">
+                <div className="text-center">
+                  <span className="block text-[10px] text-green-600 font-black mb-1 bg-green-50 px-2 py-0.5 rounded">دعم</span>
+                  <span className="block text-lg font-black text-green-700" dir="ltr">{data.summary.nearest_support || 'N/A'}</span>
+                </div>
+                <div className="w-px h-8 bg-gray-200"></div>
+                <div className="text-center">
+                  <span className="block text-[10px] text-red-600 font-black mb-1 bg-red-50 px-2 py-0.5 rounded">مقاومة</span>
+                  <span className="block text-lg font-black text-red-700" dir="ltr">{data.summary.nearest_resistance || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm text-center flex flex-col justify-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-full h-1 bg-blue-500"></div>
+              <p className="text-sm text-gray-500 font-bold mb-1">المستهدف الأقرب (TP1)</p>
+              <p className="text-2xl font-black text-blue-700" dir="ltr">{data.summary.target || 'N/A'}</p>
+            </div>
+            
+            <div className={`p-5 rounded-2xl border shadow-sm text-center flex flex-col justify-center ${
+              data.summary.action.includes('STRONG BUY') || data.summary.action.includes('شراء قوي') ? 'bg-green-600 border-green-700 text-white' :
+              data.summary.action.includes('BUY') || data.summary.action.includes('شراء') ? 'bg-green-100 border-green-300 text-green-800' :
+              data.summary.action.includes('SELL') || data.summary.action.includes('بيع') ? 'bg-red-100 border-red-300 text-red-800' :
+              'bg-gray-100 border-gray-300 text-gray-800'
+            }`}>
+              <p className="text-xs font-bold opacity-80 mb-1">القرار الفني</p>
+              <p className="text-xl font-black uppercase tracking-wide">{data.summary.action}</p>
+            </div>
+          </div>
+
+          {/* تفصيل نقاط التقييم (Quant Scores Breakdown) */}
+          {data.summary.details && data.summary.details.length > 0 && (
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+              <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <span>⚙️</span> تحليل العوامل المؤثرة (Factor Breakdown)
+              </h3>
+              <div className="flex flex-wrap gap-3">
+                {data.summary.details.map((detail: string, idx: number) => {
+                  const [label, scorePart] = detail.split(': ');
+                  return (
+                    <div key={idx} className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 flex items-center gap-3">
+                      <span className="text-sm font-bold text-gray-600">{label}</span>
+                      <span className="text-sm font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded" dir="ltr">{scorePart}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* تقرير الذكاء الاصطناعي المؤسسي */}
+          {data.summary.report_text && (
+            <div className="bg-white p-6 md:p-10 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden">
+              {/* زخرفة خلفية */}
+              <div className="absolute -top-10 -left-10 text-9xl opacity-5 select-none pointer-events-none">🤖</div>
+              
+              <div className="relative z-10">
+                {renderReport(data.summary.report_text)}
+              </div>
+            </div>
+          )}
+
+          {/* الشارت */}
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+             <StockChart symbol={data.symbol.replace('.CA', '')} interval={interval} />
           </div>
         </div>
-
-        <div className="border-t border-gray-100 pt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="space-y-2">
-            <label className="block font-bold text-gray-700 text-sm">أقصى عدد صفقات مفتوحة</label>
-            <input 
-              type="number" 
-              name="max_open_trades"
-              value={settings.max_open_trades}
-              onChange={handleChange}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none font-bold"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block font-bold text-gray-700 text-sm">إجمالي المخاطرة التراكمية (%)</label>
-            <input 
-              type="number"
-              step="0.1" 
-              name="max_total_risk"
-              value={settings.max_total_risk}
-              onChange={handleChange}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none font-bold"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block font-bold text-gray-700 text-sm">الحد الأدنى لنسبة العائد (R:R)</label>
-            <input 
-              type="number"
-              step="0.1" 
-              name="min_rr"
-              value={settings.min_rr}
-              onChange={handleChange}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none font-bold"
-            />
-          </div>
-        </div>
-
-        <div className="pt-4 flex justify-end">
-          <button 
-            type="submit"
-            disabled={saving}
-            className={`px-8 py-3 rounded-xl font-bold text-white transition-all shadow-md ${
-              saving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-lg'
-            }`}
-          >
-            {saving ? 'جاري الحفظ...' : '💾 حفظ الإعدادات'}
-          </button>
-        </div>
-      </form>
+      )}
     </div>
+  );
+}
+
+// تصدير الصفحة الأساسية مغلفة بـ Suspense لضمان استقرار التطبيق
+export default function AnalysisPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-xl font-bold text-gray-400 animate-pulse">جاري تحميل واجهة التحليل الكمّي...</div>}>
+      <AnalysisContent />
+    </Suspense>
   );
 }

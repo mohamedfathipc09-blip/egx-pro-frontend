@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // تعريف شكل البيانات القادمة من الباك إند
 export interface RadarResult {
@@ -18,6 +18,26 @@ export default function RadarPage() {
   const [error, setError] = useState('');
   const [hasScanned, setHasScanned] = useState(false);
 
+  // 👈 التعديل الجديد: جلب آخر فحص محفوظ أول ما الصفحة تفتح
+  useEffect(() => {
+    const fetchLastScan = async () => {
+      try {
+        const res = await fetch('https://egx-pro-api.onrender.com/api/radar/latest');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.scan_results && data.scan_results.length > 0) {
+            setResults(data.scan_results);
+            setHasScanned(true); // نعتبره عمل فحص عشان يعرض الجدول
+          }
+        }
+      } catch (err) {
+        console.error('لا يوجد فحص سابق أو حدث خطأ في جلبه');
+      }
+    };
+    fetchLastScan();
+  }, []);
+
+  // دالة الفحص اللحظي الجديد
   const fetchRadar = async () => {
     try {
       setLoading(true);
