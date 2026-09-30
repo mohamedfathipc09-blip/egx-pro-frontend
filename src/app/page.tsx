@@ -2,6 +2,8 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import StockChart from '@/components/StockChart'; 
+// 👈 استدعاء مكون الفرص المرشحة (تأكد من المسار الصحيح للملف لديك)
+import CandidatesList from '@/components/CandidatesList'; 
 
 function AnalysisContent() {
   const [symbol, setSymbol] = useState('');
@@ -16,7 +18,6 @@ function AnalysisContent() {
   const searchParams = useSearchParams();
   const urlSymbol = searchParams.get('symbol');
 
-  // 👈 الدالة بقت تقبل overrideInterval عشان تتحدث فوراً
   const analyzeStock = async (overrideSymbol?: string, overrideInterval?: string) => {
     const targetSymbol = overrideSymbol || symbol;
     const targetInterval = overrideInterval || interval;
@@ -132,7 +133,6 @@ function AnalysisContent() {
               key={intv}
               onClick={() => {
                 setInterval(intv);
-                // 👈 تحديث التحليل فوراً لو فيه سهم مكتوب
                 if (symbol) {
                   analyzeStock(symbol, intv);
                 }
@@ -166,6 +166,11 @@ function AnalysisContent() {
             {loading ? <><span className="animate-spin text-xl">⏳</span> جاري المعالجة...</> : <><span className="text-xl">⚡</span> حلل السهم الآن</>}
           </button>
         </div>
+      </div>
+
+      {/* 👈 قسم الفرص المرشحة تمت إضافته هنا كلوحة تحكم (Dashboard) مستقلة */}
+      <div className="mb-8">
+        <CandidatesList />
       </div>
 
       {error && (
