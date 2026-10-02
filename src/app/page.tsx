@@ -126,9 +126,9 @@ function AnalysisContent() {
           // إذا كانت من ضمن خطة التداول، نعرضها كبطاقة
           if (['Target', 'الهدف', 'Stop', 'وقف', 'Entry', 'الدخول', 'Risk/Reward', 'العائد', 'النطاق', 'القوة'].some(k => key.includes(k))) {
             return (
-              <div key={idx} className={`${bgClass} border rounded-xl p-3 my-2 flex items-center justify-between shadow-sm`}>
-                <span className="font-bold text-gray-600 text-lg">{key}</span>
-                <span className={`font-black text-xl ${textClass}`} dir="ltr">{value}</span>
+              <div key={idx} className={`${bgClass} border rounded-xl p-3 my-2 flex items-center justify-between shadow-sm`} dir="ltr">
+                <span className="font-bold text-gray-700 text-lg capitalize">{key.replace(/:/g, '')}</span>
+                <span className={`font-black text-xl ${textClass}`}>{value}</span>
               </div>
             );
           }
