@@ -2,7 +2,6 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import StockChart from '@/components/StockChart'; 
-// 👈 استدعاء مكون الفرص المرشحة (تأكد من المسار الصحيح للملف لديك)
 import CandidatesList from '@/components/CandidatesList'; 
 
 function AnalysisContent() {
@@ -76,29 +75,83 @@ function AnalysisContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSymbol]);
 
+  // 🔥 دالة قارئ التقرير (المحدثة لقراءة الهيكل المؤسسي والأهداف المتسلسلة)
   const renderReport = (text: string) => {
     if (!text) return null;
     const cleanText = text.replace(/##/g, '\n##').replace(/- \*\*/g, '\n- **');
+    
     return cleanText.split('\n').map((line, idx) => {
       const t = line.trim();
       if (!t) return null;
-      if (t.startsWith('## ')) return <h3 key={idx} className="text-xl font-black text-blue-900 mt-8 mb-4 border-b-2 border-blue-100 pb-2">{t.replace('## ', '')}</h3>;
-      if (t.startsWith('# ')) return <h2 key={idx} className="text-2xl font-black text-gray-800 mb-6 bg-gray-100 p-4 rounded-xl border-r-4 border-blue-600 shadow-sm">{t.replace('# ', '')}</h2>;
-      if (t.startsWith('- **')) {
-        const parts = t.split('**');
+
+      // 1. معالجة رسائل الخطأ من السيرفر (Rate Limit 429)
+      if (t.includes('⚠️') && (t.includes('تنبيه') || t.includes('حجب'))) {
         return (
-          <li key={idx} className="mr-6 mb-3 text-gray-800 flex items-start gap-3">
-            <span className="text-blue-500 mt-1 text-lg">▪</span>
-            <span className="text-lg"><span className="font-bold text-gray-900">{parts[1]}</span>{parts[2]}</span>
-          </li>
+          <div key={idx} className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-lg my-6 shadow-sm">
+             <p className="text-yellow-800 font-bold text-lg leading-relaxed">{t}</p>
+          </div>
         );
       }
+
+      // 2. معالجة السيناريوهات الثلاثة (إيجابي، سلبي، عرضي)
+      if (t.startsWith('🟢')) {
+        return <div key={idx} className="bg-green-50 border border-green-200 text-green-900 p-4 rounded-xl my-3 flex gap-3 items-start shadow-sm"><span className="text-xl">🟢</span> <span className="font-bold text-lg">{t.replace('🟢 إيجابي:', 'السيناريو الإيجابي:').replace('🟢', '')}</span></div>;
+      }
+      if (t.startsWith('🔴')) {
+        return <div key={idx} className="bg-red-50 border border-red-200 text-red-900 p-4 rounded-xl my-3 flex gap-3 items-start shadow-sm"><span className="text-xl">🔴</span> <span className="font-bold text-lg">{t.replace('🔴 سلبي:', 'السيناريو السلبي:').replace('🔴', '')}</span></div>;
+      }
+      if (t.startsWith('🟡')) {
+        return <div key={idx} className="bg-yellow-50 border border-yellow-200 text-yellow-900 p-4 rounded-xl my-3 flex gap-3 items-start shadow-sm"><span className="text-xl">🟡</span> <span className="font-bold text-lg">{t.replace('🟡 عرضي:', 'السيناريو العرضي:').replace('🟡', '')}</span></div>;
+      }
+
+      // 3. العناوين الرئيسية
+      if (t.startsWith('## ')) return <h3 key={idx} className="text-xl font-black text-blue-900 mt-8 mb-4 border-b-2 border-blue-100 pb-2">{t.replace('## ', '')}</h3>;
+      if (t.startsWith('# ')) return <h2 key={idx} className="text-2xl font-black text-gray-800 mb-6 bg-gray-100 p-4 rounded-xl border-r-4 border-blue-600 shadow-sm">{t.replace('# ', '')}</h2>;
+
+      // 4. معالجة خطة التداول (الأهداف، الدخول، الوقف) لتظهر كبطاقات أنيقة
+      if (t.startsWith('- **')) {
+        const match = t.match(/- \*\*(.*?)\*\*(.*)/);
+        if (match) {
+          const key = match[1].trim();
+          const value = match[2].trim().replace(/^:/, '').trim();
+          
+          let bgClass = "bg-gray-50 border-gray-200";
+          let textClass = "text-gray-800";
+          
+          if (key.includes('Target') || key.includes('الهدف')) { bgClass = "bg-green-50 border-green-200"; textClass = "text-green-700"; }
+          else if (key.includes('Stop') || key.includes('وقف')) { bgClass = "bg-red-50 border-red-200"; textClass = "text-red-700"; }
+          else if (key.includes('Entry') || key.includes('الدخول')) { bgClass = "bg-blue-50 border-blue-200"; textClass = "text-blue-700"; }
+          else if (key.includes('Risk/Reward') || key.includes('العائد')) { bgClass = "bg-purple-50 border-purple-200"; textClass = "text-purple-700"; }
+
+          // إذا كانت من ضمن خطة التداول، نعرضها كبطاقة
+          if (['Target', 'الهدف', 'Stop', 'وقف', 'Entry', 'الدخول', 'Risk/Reward', 'العائد', 'النطاق', 'القوة'].some(k => key.includes(k))) {
+            return (
+              <div key={idx} className={`${bgClass} border rounded-xl p-3 my-2 flex items-center justify-between shadow-sm`}>
+                <span className="font-bold text-gray-600 text-lg">{key}</span>
+                <span className={`font-black text-xl ${textClass}`} dir="ltr">{value}</span>
+              </div>
+            );
+          }
+
+          // نقاط عادية بها Bold
+          return (
+            <li key={idx} className="mr-6 mb-3 text-gray-800 flex items-start gap-3">
+              <span className="text-blue-500 mt-1 text-lg">▪</span>
+              <span className="text-lg"><span className="font-bold text-gray-900">{key}:</span> {value}</span>
+            </li>
+          );
+        }
+      }
+
+      // 5. النقاط العادية (Bullets)
       if (t.startsWith('- ')) {
         return <li key={idx} className="mr-6 mb-2 text-gray-700 flex items-start gap-3">
           <span className="text-gray-400 mt-1 text-lg">▪</span>
           <span className="text-lg">{t.replace('- ', '')}</span>
         </li>;
       }
+
+      // 6. النصوص العادية
       return <p key={idx} className="text-gray-800 leading-relaxed mb-4 font-medium text-lg">{t}</p>;
     });
   };
@@ -168,7 +221,6 @@ function AnalysisContent() {
         </div>
       </div>
 
-      {/* 👈 قسم الفرص المرشحة تمت إضافته هنا كلوحة تحكم (Dashboard) مستقلة */}
       <div className="mb-8">
         <CandidatesList />
       </div>
@@ -183,7 +235,6 @@ function AnalysisContent() {
       {data && data.summary && data.summary.action && (
         <div className="flex flex-col gap-6 animate-fade-in">
           
-          {/* Dashboard العلوية */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm text-center relative overflow-hidden">
               <p className="text-sm text-gray-500 font-bold mb-2">السعر الحالي</p>
@@ -228,7 +279,6 @@ function AnalysisContent() {
             </div>
           </div>
 
-          {/* قسم الاختبار التاريخي (Backtest Results) */}
           {loadingBacktest ? (
              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm text-center animate-pulse">
                <p className="text-gray-500 font-bold">⏳ جاري إجراء الاختبار التاريخي للاستراتيجية (Backtesting)...</p>
@@ -264,7 +314,6 @@ function AnalysisContent() {
             </div>
           )}
 
-          {/* تفصيل نقاط التقييم (Quant Scores Breakdown) */}
           {data.summary.details && data.summary.details.length > 0 && (
             <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
               <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4">⚙️ تحليل العوامل (Factor Breakdown)</h3>
@@ -283,12 +332,10 @@ function AnalysisContent() {
             </div>
           )}
 
-          {/* الشارت */}
           <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
              <StockChart symbol={data.symbol.replace('.CA', '')} interval={interval} />
           </div>
 
-          {/* تقرير الذكاء الاصطناعي */}
           {data.summary.report_text && (
             <div className="bg-white p-6 md:p-10 rounded-2xl border border-gray-200 shadow-md mt-4 relative overflow-hidden">
               <div className="absolute top-4 left-4 text-6xl opacity-10 select-none pointer-events-none">📝</div>
