@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Cairo } from 'next/font/google'; 
-import "@/app/globals.css";
+import "./globals.css";
 import Link from 'next/link';
 import Image from 'next/image'; // 👈 استيراد مكون الصور من Next.js
 

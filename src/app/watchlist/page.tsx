@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-
+import PortfolioChart, { CandleData, TradeLevels, ChartEvent } from '@/components/PortfolioChart';
 // واجهة البيانات المطابقة للمسار المؤسسي الجديد ومحرك الأحداث
 interface TradeEvent {
   id: number;
@@ -98,6 +98,30 @@ export default function StrategiesPage() {
     }
   };
 
+  // دالة مؤقتة لتوليد شموع وهمية لغرض العرض والتجربة (حتى يتم ربط الأسعار اللحظية لاحقاً)
+  const generateDummyCandles = (basePrice: number): CandleData[] => {
+    const candles: CandleData[] = [];
+    let currentPrice = basePrice;
+    let time = new Date();
+    time.setDate(time.getDate() - 30); // نبدأ من 30 يوم ورا
+
+    for (let i = 0; i < 30; i++) {
+      const open = currentPrice;
+      const close = open + (Math.random() - 0.5) * (basePrice * 0.05);
+      const high = Math.max(open, close) + Math.random() * (basePrice * 0.02);
+      const low = Math.min(open, close) - Math.random() * (basePrice * 0.02);
+      
+      candles.push({
+        time: time.toISOString().split('T')[0],
+        open, high, low, close
+      });
+      
+      currentPrice = close;
+      time.setDate(time.getDate() + 1);
+    }
+    return candles;
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col justify-center items-center h-[70vh] gap-4">
@@ -169,8 +193,26 @@ export default function StrategiesPage() {
             const lossPct = trade.stop_loss && trade.entry_price 
               ? (((trade.entry_price - trade.stop_loss) / trade.entry_price) * 100).toFixed(2) : "0.00";
 
+            // إعداد بيانات الشارت لكل صفقة
+            const tradeLevels: TradeLevels = {
+              entry: trade.entry_price,
+              tp1: trade.target_1,
+              tp2: trade.target_2,
+              stopLoss: trade.stop_loss
+            };
+
+            const chartEvents: ChartEvent[] = (trade.events || []).map(ev => ({
+              time: new Date().toISOString().split('T')[0], // سيتم استبداله بوقت الحدث الحقيقي لاحقاً
+              position: ev.event_type.includes('TARGET') ? 'aboveBar' : 'belowBar',
+              color: ev.event_type.includes('TARGET') ? '#00E676' : (ev.event_type.includes('STOP') ? '#D50000' : '#2962FF'),
+              shape: ev.event_type.includes('TARGET') ? 'arrowDown' : 'arrowUp',
+              text: ev.message
+            }));
+
+            const chartData = generateDummyCandles(trade.entry_price);
+
             return (
-              <div key={trade.id} className={`bg-white rounded-3xl shadow-sm border p-6 relative overflow-hidden transition-all hover:shadow-lg ${trade.monitoring_enabled === false ? 'opacity-75 grayscale-[20%]' : 'border-blue-50'}`}>
+              <div key={trade.id} className={`bg-white rounded-3xl shadow-sm border p-6 relative overflow-hidden transition-all hover:shadow-lg flex flex-col ${trade.monitoring_enabled === false ? 'opacity-75 grayscale-[20%]' : 'border-blue-50'}`}>
                 
                 <div className={`absolute top-0 right-0 h-1.5 w-full ${trade.monitoring_enabled === false ? 'bg-gray-400' : 'bg-blue-500'}`}></div>
 
@@ -228,10 +270,21 @@ export default function StrategiesPage() {
                   </div>
                 </div>
 
+                {/* عرض الشارت المؤسسي (تم إضافته هنا) */}
+                <div className="mb-5 -mx-2">
+                  <PortfolioChart 
+                    data={chartData} 
+                    levels={tradeLevels} 
+                    events={chartEvents} 
+                    height={250} 
+                  />
+                </div>
+
                 {/* سجل الأحداث (Timeline) */}
                 {trade.events && trade.events.length > 0 && (
-                  <div className="mb-5 border-t pt-4">
-<                  span className="flex text-xs text-gray-500 font-bold uppercase mb-3 items-center gap-1">                      <span>⏱️</span> سجل التحديثات اللحظية
+                  <div className="mb-5 border-t pt-4 flex-grow">
+                    <span className="flex text-xs text-gray-500 font-bold uppercase mb-3 items-center gap-1">
+                      <span>⏱️</span> سجل التحديثات اللحظية
                     </span>
                     <div className="max-h-32 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                       {trade.events.map((ev, idx) => (
@@ -245,7 +298,7 @@ export default function StrategiesPage() {
                 )}
 
                 {/* أزرار التحكم */}
-                <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
+                <div className="flex gap-2 mt-auto pt-4 border-t border-gray-100">
                   <button 
                     onClick={() => toggleMonitoring(trade.id, trade.monitoring_enabled ?? true)}
                     className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg text-xs font-bold transition-colors"
