@@ -30,7 +30,7 @@ interface ActiveTrade {
 }
 
 // ==========================================
-// مكون فرعي: كارت الصفقة (مُحصّن ضد الـ Null)
+// مكون فرعي: كارت الصفقة (مُحصّن ضد الـ Null وصيغ الوقت الخاطئة)
 // ==========================================
 const TradeCard = ({ 
   trade, 
@@ -82,14 +82,23 @@ const TradeCard = ({
     stopLoss: trade.stop_loss || 0
   };
 
-  // حماية سجل الأحداث من الانهيار إذا كان الحدث غير مكتمل
-  const chartEvents: ChartEvent[] = (trade.events || []).map(ev => ({
-    time: ev.timestamp ? ev.timestamp.split(' ')[0] : new Date().toISOString().split('T')[0],
-    position: ev.event_type?.includes('TARGET') ? 'aboveBar' : 'belowBar',
-    color: ev.event_type?.includes('TARGET') ? '#00E676' : (ev.event_type?.includes('STOP') ? '#D50000' : '#2962FF'),
-    shape: ev.event_type?.includes('TARGET') ? 'arrowDown' : 'arrowUp',
-    text: ev.message || 'تحديث'
-  }));
+  // 🛠️ الحل الجذري: ربط الأحداث اللحظية بوقت آخر شمعة حقيقية لضمان عدم انهيار الـ Chart
+  const chartEvents: ChartEvent[] = (trade.events || []).map(ev => {
+    let safeTime;
+    if (chartData && chartData.length > 0) {
+      safeTime = chartData[chartData.length - 1].time; // أخذ وقت آخر شمعة بدقة لضمان التوافق مع المكتبة
+    } else {
+      safeTime = new Date().toISOString().split('T')[0]; // صيغة احتياطية yyyy-mm-dd
+    }
+
+    return {
+      time: safeTime,
+      position: ev.event_type?.includes('TARGET') ? 'aboveBar' : 'belowBar',
+      color: ev.event_type?.includes('TARGET') ? '#00E676' : (ev.event_type?.includes('STOP') ? '#D50000' : '#2962FF'),
+      shape: ev.event_type?.includes('TARGET') ? 'arrowDown' : 'arrowUp',
+      text: ev.message || 'تحديث'
+    };
+  });
 
   return (
     <div className={`bg-white rounded-3xl shadow-sm border p-6 relative overflow-hidden transition-all hover:shadow-lg flex flex-col ${trade.monitoring_enabled === false ? 'opacity-75 grayscale-[20%]' : 'border-blue-50'}`}>
@@ -189,7 +198,7 @@ const TradeCard = ({
           onClick={() => toggleMonitoring(trade.id, trade.monitoring_enabled ?? true)}
           className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg text-xs font-bold transition-colors"
         >
-          {trade.monitoring_enabled === false ? '▶️️ استئناف المراقبة' : '⏸️ إيقاف مؤقت'}
+          {trade.monitoring_enabled === false ? '▶ استئناف المراقبة' : '⏸️ إيقاف مؤقت'}
         </button>
         <button 
           onClick={() => removeTrade(trade.symbol)}
@@ -306,7 +315,7 @@ export default function StrategiesPage() {
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg flex items-center gap-3">
-          <span className="text-xl">⚠️</span><p className="text-red-700 font-bold">{error}</p>
+          <span className="text-xl">⚠️️</span><p className="text-red-700 font-bold">{error}</p>
         </div>
       )}
 

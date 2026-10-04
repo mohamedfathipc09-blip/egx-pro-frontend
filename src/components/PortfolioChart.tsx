@@ -1,6 +1,5 @@
 "use client";
 import React, { useEffect, useRef, memo } from "react";
-// 👇 لاحظ استدعاء CandlestickSeries و createSeriesMarkers الخاصة بالإصدار الخامس
 import { createChart, CandlestickSeries, ColorType, CrosshairMode, createSeriesMarkers } from "lightweight-charts";
 
 // ==========================================
@@ -37,7 +36,39 @@ interface PortfolioChartProps {
 }
 
 // ==========================================
-// 2. المكون الأساسي (Component)
+// 2. فلتر الوقت (لمنع انهيار المكتبة بسبب صيغة 07:00)
+// ==========================================
+const sanitizeTime = (timeVal: string | number, index: number): string | number => {
+  if (typeof timeVal === 'number') return timeVal;
+  
+  if (typeof timeVal === 'string') {
+    const trimmedTime = timeVal.trim();
+    
+    // الحالة الأولى: الوقت قادم كساعات فقط "07:00" (نربطه بتاريخ اليوم ونحوله لثواني)
+    if (/^\d{1,2}:\d{2}/.test(trimmedTime)) {
+      const today = new Date().toISOString().split('T')[0];
+      const ms = new Date(`${today}T${trimmedTime}:00`).getTime();
+      if (!isNaN(ms)) return Math.floor(ms / 1000);
+    }
+    
+    // الحالة الثانية: الوقت يحتوي على تاريخ وساعة (نحوله لثواني)
+    if (trimmedTime.includes(' ') || trimmedTime.includes('T')) {
+      const ms = new Date(trimmedTime).getTime();
+      if (!isNaN(ms)) return Math.floor(ms / 1000);
+    }
+    
+    // الحالة الثالثة: تاريخ نقي بصيغة YYYY-MM-DD (نقبله كما هو)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedTime)) {
+      return trimmedTime;
+    }
+  }
+
+  // كحماية نهائية: إعطاء وقت حالي تسلسلي لمنع الشاشة البيضاء تماماً
+  return Math.floor(Date.now() / 1000) + (index * 60);
+};
+
+// ==========================================
+// 3. المكون الأساسي (Component)
 // ==========================================
 function PortfolioChart({ data, levels, events, height = 350 }: PortfolioChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -63,7 +94,6 @@ function PortfolioChart({ data, levels, events, height = 350 }: PortfolioChartPr
       height: height,
     });
 
-    // 👇 التعديل الجوهري لـ V5: استخدام addSeries
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#26a69a",
       downColor: "#ef5350",
@@ -72,7 +102,13 @@ function PortfolioChart({ data, levels, events, height = 350 }: PortfolioChartPr
       wickDownColor: "#ef5350",
     });
 
-    candlestickSeries.setData(data as any);
+    // 👇 تمرير البيانات بعد تنظيف الوقت
+    const safeData = data.map((c, i) => ({
+      ...c,
+      time: sanitizeTime(c.time, i)
+    }));
+    
+    candlestickSeries.setData(safeData as any);
 
     if (levels) {
       candlestickSeries.createPriceLine({
@@ -114,9 +150,13 @@ function PortfolioChart({ data, levels, events, height = 350 }: PortfolioChartPr
       });
     }
 
-    // 👇 التعديل الثاني لـ V5: طريقة رسم علامات التحديثات اللحظية (Markers)
+    // 👇 تمرير الأحداث بعد تنظيف الوقت ومطابقته
     if (events && events.length > 0) {
-      createSeriesMarkers(candlestickSeries, events as any);
+      const safeEvents = events.map((e, i) => ({
+        ...e,
+        time: sanitizeTime(e.time, i)
+      }));
+      createSeriesMarkers(candlestickSeries, safeEvents as any);
     }
 
     chart.timeScale().fitContent();
