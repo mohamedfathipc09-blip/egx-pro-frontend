@@ -30,7 +30,7 @@ interface ActiveTrade {
 }
 
 // ==========================================
-// مكون فرعي: كارت الصفقة (ليجلب بيانات الشارت الخاصة به بشكل مستقل)
+// مكون فرعي: كارت الصفقة (مُحصّن ضد الـ Null)
 // ==========================================
 const TradeCard = ({ 
   trade, 
@@ -64,29 +64,31 @@ const TradeCard = ({
     fetchChartData();
   }, [trade.symbol]);
 
+  // حماية حسابات النسب المئوية
   const profitPct = trade.target_1 && trade.entry_price 
     ? (((trade.target_1 - trade.entry_price) / trade.entry_price) * 100).toFixed(2) : "0.00";
   const lossPct = trade.stop_loss && trade.entry_price 
     ? (((trade.entry_price - trade.stop_loss) / trade.entry_price) * 100).toFixed(2) : "0.00";
 
-  // تجميل منطقة الدخول (تقريب الأرقام العشرية الطويلة)
-  const formattedEntryZone = trade.entry_zone.includes('-') 
+  // حماية منطقة الدخول من أن تكون Null
+  const formattedEntryZone = trade.entry_zone?.includes('-') 
     ? trade.entry_zone.split('-').map(n => Number(n.trim()).toFixed(2)).join(' - ')
-    : trade.entry_zone;
+    : (trade.entry_zone || 'نقطة محددة');
 
   const tradeLevels: TradeLevels = {
-    entry: trade.entry_price,
-    tp1: trade.target_1,
-    tp2: trade.target_2,
-    stopLoss: trade.stop_loss
+    entry: trade.entry_price || 0,
+    tp1: trade.target_1 || 0,
+    tp2: trade.target_2 || undefined,
+    stopLoss: trade.stop_loss || 0
   };
 
+  // حماية سجل الأحداث من الانهيار إذا كان الحدث غير مكتمل
   const chartEvents: ChartEvent[] = (trade.events || []).map(ev => ({
-    time: ev.timestamp.split(' ')[0] || new Date().toISOString().split('T')[0], // محاولة أخذ تاريخ الحدث
-    position: ev.event_type.includes('TARGET') ? 'aboveBar' : 'belowBar',
-    color: ev.event_type.includes('TARGET') ? '#00E676' : (ev.event_type.includes('STOP') ? '#D50000' : '#2962FF'),
-    shape: ev.event_type.includes('TARGET') ? 'arrowDown' : 'arrowUp',
-    text: ev.message
+    time: ev.timestamp ? ev.timestamp.split(' ')[0] : new Date().toISOString().split('T')[0],
+    position: ev.event_type?.includes('TARGET') ? 'aboveBar' : 'belowBar',
+    color: ev.event_type?.includes('TARGET') ? '#00E676' : (ev.event_type?.includes('STOP') ? '#D50000' : '#2962FF'),
+    shape: ev.event_type?.includes('TARGET') ? 'arrowDown' : 'arrowUp',
+    text: ev.message || 'تحديث'
   }));
 
   return (
@@ -105,13 +107,13 @@ const TradeCard = ({
           </div>
           <h2 className="text-3xl font-black text-gray-900">{trade.symbol}</h2>
           <p className="text-xs text-gray-500 font-bold mt-1 px-2 py-1 bg-gray-100 rounded inline-block">
-            {trade.strategy}
+            {trade.strategy || 'استراتيجية آلية'}
           </p>
         </div>
         <div className="text-center bg-gray-50 px-4 py-2 rounded-xl border border-gray-100">
-          <span className="block text-[10px] text-gray-500 font-bold uppercase">التقييم الفني</span>
+          <span className="block text-[10px] text-gray-500 font-bold uppercase">التقييم</span>
           <span className="block text-2xl font-black text-blue-700" dir="ltr">
-            {trade.score}
+            {trade.score || 0}
           </span>
         </div>
       </div>
@@ -122,7 +124,7 @@ const TradeCard = ({
           <span className="block text-xs text-green-700 font-bold mb-1">🎯 الهدف القادم</span>
           <div className="flex justify-between items-baseline">
             <span className="text-xl font-black text-green-800" dir="ltr">
-              {trade.state === 'TP1_HIT' ? trade.target_2 : trade.state === 'TP2_HIT' ? trade.target_3 : trade.target_1}
+              {trade.state === 'TP1_HIT' ? (trade.target_2 || 'متعقب') : trade.state === 'TP2_HIT' ? (trade.target_3 || 'متعقب') : (trade.target_1 || 0)}
             </span>
             <span className="text-xs font-bold text-green-600" dir="ltr">+{profitPct}%</span>
           </div>
@@ -130,7 +132,7 @@ const TradeCard = ({
         <div className="bg-red-50 p-3 rounded-xl border border-red-100">
           <span className="block text-xs text-red-700 font-bold mb-1">🛑 الوقف</span>
           <div className="flex justify-between items-baseline">
-            <span className="text-xl font-black text-red-800" dir="ltr">{trade.stop_loss}</span>
+            <span className="text-xl font-black text-red-800" dir="ltr">{trade.stop_loss || 0}</span>
             <span className="text-xs font-bold text-red-600" dir="ltr">-{lossPct}%</span>
           </div>
         </div>
@@ -144,7 +146,7 @@ const TradeCard = ({
         </div>
         <div className="text-right">
           <span className="block text-[10px] text-gray-500 font-bold uppercase mb-1">Risk / Reward</span>
-          <span className="text-sm font-black text-gray-800" dir="ltr">{trade.risk_reward} : 1</span>
+          <span className="text-sm font-black text-gray-800" dir="ltr">{trade.risk_reward ? Number(trade.risk_reward).toFixed(2) : '0.00'} : 1</span>
         </div>
       </div>
 
@@ -174,7 +176,7 @@ const TradeCard = ({
             {trade.events.map((ev, idx) => (
               <div key={idx} className="bg-gray-50 p-2.5 rounded-lg border border-gray-100 text-xs">
                 <span className="font-black text-blue-600 block mb-1" dir="ltr">{ev.timestamp}</span>
-                <span className="text-gray-700 font-semibold leading-relaxed" dangerouslySetInnerHTML={{ __html: ev.message.replace(/\n/g, '<br/>') }}></span>
+                <span className="text-gray-700 font-semibold leading-relaxed" dangerouslySetInnerHTML={{ __html: (ev.message || '').replace(/\n/g, '<br/>') }}></span>
               </div>
             ))}
           </div>
@@ -187,7 +189,7 @@ const TradeCard = ({
           onClick={() => toggleMonitoring(trade.id, trade.monitoring_enabled ?? true)}
           className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg text-xs font-bold transition-colors"
         >
-          {trade.monitoring_enabled === false ? '▶️ استئناف المراقبة' : '⏸️ إيقاف مؤقت'}
+          {trade.monitoring_enabled === false ? '▶️️ استئناف المراقبة' : '⏸️ إيقاف مؤقت'}
         </button>
         <button 
           onClick={() => removeTrade(trade.symbol)}
@@ -223,7 +225,7 @@ export default function StrategiesPage() {
       if (res.ok) {
         const data = await res.json();
         if (data.status === 'success') {
-          const sorted = data.portfolio.sort((a: any, b: any) => 
+          const sorted = (data.portfolio || []).sort((a: any, b: any) => 
             new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
           );
           setPortfolio(sorted);
@@ -274,7 +276,7 @@ export default function StrategiesPage() {
       case 'TP1_HIT': return <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-black">🎯 الهدف 1 تحقق</span>;
       case 'TP2_HIT': return <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-black">🎯🎯 الهدف 2 تحقق</span>;
       case 'STOP_HIT': return <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-black">🔴 وقف الخسارة</span>;
-      default: return <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-xs font-black">{state}</span>;
+      default: return <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-xs font-black">{state || 'غير معروف'}</span>;
     }
   };
 
