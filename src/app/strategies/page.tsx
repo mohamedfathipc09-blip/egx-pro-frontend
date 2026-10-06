@@ -10,6 +10,9 @@ export interface PostMarketOpportunity {
   symbol: string;
   price: number;
   score: number;
+  confidence?: number;       // [جديد] نسبة الثقة
+  status?: string;           // [جديد] حالة السهم
+  data_quality?: string;     // [جديد] جودة البيانات
   opportunity_type: string;
   setup_quality: string;
   entry_confirmation: string;
@@ -111,14 +114,37 @@ export default function StrategiesPage() {
   const getFilteredOpportunities = () => {
     let filtered = [...pmOpportunities];
     switch (pmFilter) {
-      case '🔥 أفضل الفرص': return filtered.filter(o => o.score >= 65);
-      case '📉 قريب من دعم': return filtered.filter(o => o.reasons.some(r => r.includes('دعم')));
-      case '🔄 ارتداد من دعم': return filtered.filter(o => o.reasons.some(r => r.includes('ارتد')));
-      case '🚀 احتمالية اختراق': return filtered.filter(o => o.reasons.some(r => r.includes('اختراق') || r.includes('مقاومة')));
-      case '📊 سيولة عالية': return filtered.filter(o => o.reasons.some(r => r.includes('تداول') || r.includes('سيولة') || r.includes('حجم')));
+      case '🔥 أفضل الفرص': return filtered.filter(o => o.status === 'CONFIRMED' || o.score >= 65);
+      case '📉 قريب من دعم': return filtered.filter(o => o.reasons.some(r => r.includes('دعم') || r.includes('Support')));
+      case '🔄 ارتداد من دعم': return filtered.filter(o => o.reasons.some(r => r.includes('ارتد') || r.includes('Bounce')));
+      case '🚀 احتمالية اختراق': return filtered.filter(o => o.reasons.some(r => r.includes('اختراق') || r.includes('مقاومة') || r.includes('Breakout')));
+      case '📊 سيولة عالية': return filtered.filter(o => o.reasons.some(r => r.includes('تداول') || r.includes('سيولة') || r.includes('حجم') || r.includes('Volume')));
       case '⚖️ أفضل Risk/Reward': return filtered.sort((a, b) => b.risk_reward_ratio - a.risk_reward_ratio);
       default: return filtered;
     }
+  };
+
+  // ==========================================
+  // دوال مساعدة للتصميم (UI Helpers)
+  // ==========================================
+  const getStatusBadge = (status?: string, entryConf?: string) => {
+    const s = status || entryConf || 'WATCH';
+    if (s.includes('CONFIRMED') || s.includes('مؤكدة')) {
+      return <span className="px-2 py-1 bg-green-100 text-green-800 border border-green-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🟢 CONFIRMED</span>;
+    }
+    if (s.includes('READY')) {
+      return <span className="px-2 py-1 bg-blue-100 text-blue-800 border border-blue-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🔵 READY</span>;
+    }
+    if (s.includes('SETUP')) {
+      return <span className="px-2 py-1 bg-purple-100 text-purple-800 border border-purple-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🟣 SETUP</span>;
+    }
+    return <span className="px-2 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🟡 WATCH</span>;
+  };
+
+  const getRRBadgeColor = (rr: number) => {
+    if (rr >= 2.0) return 'bg-green-100 text-green-800 border-green-200';
+    if (rr >= 1.5) return 'bg-blue-100 text-blue-800 border-blue-200';
+    return 'bg-red-100 text-red-800 border-red-200';
   };
 
   // ==========================================
@@ -148,7 +174,7 @@ export default function StrategiesPage() {
         <span>🧠</span> التوصيات واستراتيجيات التداول
       </h1>
       
-      {/* 1. لوحة المخاطر (تظهر دائماً بالأعلى) */}
+      {/* 1. لوحة المخاطر */}
       <RiskDashboard scanSummary={data?.summary} />
 
       {/* ========================================== */}
@@ -158,14 +184,14 @@ export default function StrategiesPage() {
         <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-200 pb-4">
           <div>
             <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-              <span className="text-blue-600">🏛️</span> فرص ما بعد الإغلاق (Post-Market)
+              <span className="text-blue-600">🏛️</span> فرص ما بعد الإغلاق (Smart Scanner)
             </h2>
             {pmScanInfo && (
-              <p className="text-sm text-slate-500 mt-2 font-bold flex gap-4">
-                <span>🕒 آخر فحص: {new Date(pmScanInfo.date).toLocaleTimeString('ar-EG')}</span>
+              <div className="text-sm text-slate-500 mt-2 font-bold flex gap-4 bg-white p-2 rounded-lg border border-slate-200 w-fit">
+                <span>🕒 آخر تحديث: {new Date(pmScanInfo.date).toLocaleTimeString('ar-EG')}</span>
                 <span>📊 مفحوصة: {pmScanInfo.scanned}</span>
                 <span className="text-green-600">🎯 قوية: {pmScanInfo.strong_count}</span>
-              </p>
+              </div>
             )}
           </div>
           <button 
@@ -200,69 +226,96 @@ export default function StrategiesPage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {getFilteredOpportunities().map((opp) => (
-              <div key={opp.id} className="bg-white p-5 rounded-xl border-t-4 border-blue-600 shadow-md flex flex-col justify-between hover:shadow-lg transition-shadow">
+              <div key={opp.id} className="bg-white p-5 rounded-xl border-t-4 border-slate-800 shadow-md flex flex-col justify-between hover:shadow-xl transition-shadow relative overflow-hidden">
                 
-                <div className="flex justify-between items-start mb-4">
+                {/* شريط الجودة التحذيري (لو البيانات ضعيفة) */}
+                {(opp.data_quality === 'Poor' || opp.data_quality === 'Warning') && (
+                  <div className="absolute top-0 right-0 left-0 bg-red-500 text-white text-[10px] text-center font-bold py-0.5">
+                    ⚠️ تحذير: جودة البيانات أو السيولة ضعيفة لهذا السهم
+                  </div>
+                )}
+
+                <div className={`flex justify-between items-start mb-4 ${opp.data_quality === 'Poor' ? 'mt-3' : ''}`}>
                   <div>
                     <h3 className="text-3xl font-black text-slate-800">{opp.symbol}</h3>
                     <div className="text-sm font-bold text-slate-500 mt-1">السعر: {opp.price} ج.م</div>
                   </div>
-                  <div className="flex flex-col items-end">
-                    <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-lg text-lg font-black mb-1">
-                      {opp.score}/100
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="px-3 py-1 bg-slate-100 text-slate-800 rounded-lg text-lg font-black border border-slate-200">
+                      Score: {opp.score}
                     </span>
-                    <span className="text-xs font-bold text-gray-500">{opp.opportunity_type}</span>
+                    <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{opp.opportunity_type}</span>
                   </div>
                 </div>
 
-                <div className="flex gap-2 mb-4">
-                  <span className={`px-2 py-1 text-xs font-bold rounded ${opp.entry_confirmation.includes('مؤكدة') ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                    {opp.entry_confirmation}
-                  </span>
-                  <span className="px-2 py-1 text-xs font-bold rounded bg-purple-100 text-purple-800">
-                    R:R {opp.risk_reward_ratio}
+                {/* البادجات الجديدة (Status + RR) */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {getStatusBadge(opp.status, opp.entry_confirmation)}
+                  <span className={`px-2 py-1 text-xs font-black rounded border flex items-center gap-1 ${getRRBadgeColor(opp.risk_reward_ratio)}`}>
+                    ⚖️ R:R {opp.risk_reward_ratio}
                   </span>
                 </div>
+
+                {/* مؤشر نسبة اليقين (Confidence Bar) */}
+                {opp.confidence !== undefined && (
+                  <div className="mb-5 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    <div className="flex justify-between text-xs font-bold text-slate-600 mb-2">
+                      <span>نسبة اليقين (Confidence)</span>
+                      <span className={opp.confidence >= 70 ? 'text-green-600' : opp.confidence >= 40 ? 'text-amber-600' : 'text-red-600'}>
+                        {opp.confidence}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-500 ${opp.confidence >= 70 ? 'bg-green-500' : opp.confidence >= 40 ? 'bg-amber-400' : 'bg-red-500'}`}
+                        style={{ width: `${Math.min(opp.confidence, 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mb-4">
                   <div className="text-xs font-black text-slate-400 mb-2">أسباب الترشيح:</div>
                   <div className="flex flex-wrap gap-1">
                     {opp.reasons.map((r, i) => (
-                      <span key={i} className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded border border-slate-200">
-                        ✓ {r}
+                      <span key={i} className="px-2 py-1 bg-blue-50 text-blue-700 text-[11px] font-bold rounded border border-blue-100">
+                        ✓ {r.replace('Primary: ', '')}
                       </span>
                     ))}
                   </div>
                 </div>
 
-                <details className="mb-4 bg-slate-50 rounded-lg p-3 text-sm border border-slate-200 cursor-pointer">
-                  <summary className="font-bold text-blue-700 outline-none">السيناريوهات المتوقعة 🔮</summary>
-                  <div className="mt-3 space-y-2 text-xs leading-relaxed">
-                    <p className="text-green-800"><strong className="text-green-600">إيجابي:</strong> {opp.scenarios?.Positive}</p>
-                    <p className="text-slate-700"><strong className="text-slate-500">محايد:</strong> {opp.scenarios?.Neutral}</p>
-                    <p className="text-red-800"><strong className="text-red-600">سلبي:</strong> {opp.scenarios?.Negative}</p>
+                <details className="mb-4 bg-slate-50 rounded-lg p-3 text-sm border border-slate-200 cursor-pointer group">
+                  <summary className="font-bold text-slate-700 outline-none group-open:text-blue-600 transition-colors">تفاصيل الاستراتيجية 🔮</summary>
+                  <div className="mt-3 space-y-2 text-xs leading-relaxed border-t border-slate-200 pt-2">
+                    {opp.scenarios?.Positive && <p><strong className="text-green-600">السيناريو الإيجابي:</strong> {opp.scenarios.Positive}</p>}
+                    {opp.scenarios?.Neutral && <p><strong className="text-slate-500">السيناريو المحايد:</strong> {opp.scenarios.Neutral}</p>}
+                    {opp.scenarios?.Negative && <p><strong className="text-red-600">وقف الخسارة:</strong> {opp.scenarios.Negative}</p>}
+                    {opp.scenarios?.Warnings && opp.scenarios.Warnings !== "None" && (
+                      <p className="text-amber-700 bg-amber-50 p-2 rounded mt-2"><strong className="text-amber-600">تحذيرات:</strong> {opp.scenarios.Warnings}</p>
+                    )}
                   </div>
                 </details>
 
                 <div className="mt-auto">
                   <div className="grid grid-cols-3 gap-2 text-sm mb-3">
-                    <div className="bg-gray-50 p-2 rounded-lg text-center border border-gray-100">
-                      <span className="block text-gray-500 text-xs font-bold mb-1">دخول</span>
-                      <span className="font-black text-gray-800">{opp.entry_zone_max}</span>
+                    <div className="bg-white p-2 rounded-lg text-center border border-slate-200 shadow-sm">
+                      <span className="block text-slate-500 text-[10px] font-bold mb-1">منطقة الدخول</span>
+                      <span className="font-black text-slate-800">{opp.entry_zone_min} - {opp.entry_zone_max}</span>
                     </div>
-                    <div className="bg-gray-50 p-2 rounded-lg text-center border border-gray-100">
-                      <span className="block text-gray-500 text-xs font-bold mb-1">هدف 1</span>
+                    <div className="bg-white p-2 rounded-lg text-center border border-slate-200 shadow-sm">
+                      <span className="block text-slate-500 text-[10px] font-bold mb-1">الهدف الأول</span>
                       <span className="font-black text-green-600">{opp.tp1}</span>
                     </div>
-                    <div className="bg-gray-50 p-2 rounded-lg text-center border border-gray-100">
-                      <span className="block text-gray-500 text-xs font-bold mb-1">وقف</span>
+                    <div className="bg-white p-2 rounded-lg text-center border border-slate-200 shadow-sm">
+                      <span className="block text-slate-500 text-[10px] font-bold mb-1">وقف الخسارة</span>
                       <span className="font-black text-red-600">{opp.stop_loss}</span>
                     </div>
                   </div>
                   
                   <button 
                     onClick={() => addToWatchlist(opp)}
-                    className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded-lg transition-colors flex justify-center items-center gap-2"
+                    className="w-full bg-slate-800 hover:bg-blue-600 text-white font-bold py-2.5 rounded-lg transition-colors flex justify-center items-center gap-2 shadow-md"
                   >
                     <span>➕</span> إضافة لمحفظة المتابعة
                   </button>
