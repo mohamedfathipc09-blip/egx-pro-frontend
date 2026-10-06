@@ -28,8 +28,8 @@ export interface PostMarketOpportunity {
     Positive?: string;
     Neutral?: string;
     Negative?: string;
-    Warnings?: string;     // تم إضافة هذا الحقل لحل الخطأ
-    Status?: string;       // أضفنا باقي حقول المحرك الجديد احتياطياً
+    Warnings?: string;
+    Status?: string;
     Confidence?: string;
     Data_Quality?: string;
     RR_Details?: string;
@@ -46,25 +46,16 @@ interface ScanInfo {
 export default function StrategiesPage() {
   const API_BASE_URL = 'https://egx-pro-api.onrender.com/api';
 
-  // ==========================================
-  // حالات ماسح ما بعد الإغلاق (Post-Market)
-  // ==========================================
   const [pmOpportunities, setPmOpportunities] = useState<PostMarketOpportunity[]>([]);
   const [pmScanInfo, setPmScanInfo] = useState<ScanInfo | null>(null);
   const [pmFilter, setPmFilter] = useState<string>('🔥 أفضل الفرص');
   const [isPmScanning, setIsPmScanning] = useState(false);
   const [isPmLoading, setIsPmLoading] = useState(true);
 
-  // ==========================================
-  // حالات الرادار اللحظي القديم (Intraday)
-  // ==========================================
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
 
-  // ==========================================
-  // دوال ماسح ما بعد الإغلاق
-  // ==========================================
   useEffect(() => {
     fetchLatestPmScan();
   }, []);
@@ -114,7 +105,6 @@ export default function StrategiesPage() {
     }
   };
 
-  // فلاتر ما بعد الإغلاق
   const pmTabs = ['🔥 أفضل الفرص', '📉 قريب من دعم', '🔄 ارتداد من دعم', '🚀 احتمالية اختراق', '📊 سيولة عالية', '⚖️ أفضل Risk/Reward'];
   const getFilteredOpportunities = () => {
     let filtered = [...pmOpportunities];
@@ -130,20 +120,46 @@ export default function StrategiesPage() {
   };
 
   // ==========================================
-  // دوال مساعدة للتصميم (UI Helpers)
+  // مترجم المصطلحات (Translation Helpers)
   // ==========================================
+  const translateReason = (reason: string) => {
+    let r = reason.replace('Primary: ', '');
+    if (r.includes('Volume Confirmed Bounce')) return 'ارتداد مؤكد بسيولة عالية';
+    if (r.includes('Support Bounce')) return 'ارتداد من منطقة دعم';
+    if (r.includes('Volume Supported Pullback')) return 'تراجع صحي مدعوم بالسيولة';
+    if (r.includes('Historical Support')) {
+      const match = r.match(/\((\d+)\s*prior bounces\)/i);
+      if (match) return `دعم تاريخي قوي (${match[1]} ارتدادات سابقة)`;
+      return 'ارتداد من دعم تاريخي';
+    }
+    if (r.includes('Bullish Momentum')) return 'زخم شرائي إيجابي';
+    if (r.includes('Pre-Breakout')) return 'تجميع وضغط قبل الاختراق';
+    if (r.includes('EMA20 Pullback')) return 'اختبار ناجح لمتوسط 20 يوم';
+    if (r.includes('EMA50 Pullback')) return 'اختبار ناجح لمتوسط 50 يوم';
+    if (r.includes('Volume Accumulation')) return 'تجميع سيولة أسفل المقاومة';
+    if (r.includes('RSI Recovery')) return 'تعافي مؤشر القوة النسبية (RSI)';
+    return r; // إذا لم يجد ترجمة يعرضها كما هي
+  };
+
+  const translateOppType = (type: string) => {
+    if (type.includes('Support Bounce')) return 'ارتداد من دعم';
+    if (type.includes('Breakout')) return 'اختراق مقاومة';
+    if (type.includes('Pullback')) return 'تراجع صحي';
+    return type;
+  };
+
   const getStatusBadge = (status?: string, entryConf?: string) => {
     const s = status || entryConf || 'WATCH';
     if (s.includes('CONFIRMED') || s.includes('مؤكدة')) {
-      return <span className="px-2 py-1 bg-green-100 text-green-800 border border-green-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🟢 CONFIRMED</span>;
+      return <span className="px-2 py-1 bg-green-100 text-green-800 border border-green-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🟢 دخول مؤكد</span>;
     }
     if (s.includes('READY')) {
-      return <span className="px-2 py-1 bg-blue-100 text-blue-800 border border-blue-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🔵 READY</span>;
+      return <span className="px-2 py-1 bg-blue-100 text-blue-800 border border-blue-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🔵 جاهز للاختراق</span>;
     }
     if (s.includes('SETUP')) {
-      return <span className="px-2 py-1 bg-purple-100 text-purple-800 border border-purple-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🟣 SETUP</span>;
+      return <span className="px-2 py-1 bg-purple-100 text-purple-800 border border-purple-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🟣 قيد التجهيز</span>;
     }
-    return <span className="px-2 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🟡 WATCH</span>;
+    return <span className="px-2 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded text-xs font-black shadow-sm flex items-center gap-1">🟡 للمراقبة</span>;
   };
 
   const getRRBadgeColor = (rr: number) => {
@@ -152,13 +168,9 @@ export default function StrategiesPage() {
     return 'bg-red-100 text-red-800 border-red-200';
   };
 
-  // ==========================================
-  // دالة الرادار اللحظي القديم
-  // ==========================================
   const startScan = () => {
     setHasStarted(true);
     setIsLoading(true);
-
     fetch(`${API_BASE_URL}/strategies`)
       .then(res => res.json())
       .then(result => {
@@ -174,17 +186,12 @@ export default function StrategiesPage() {
   return (
     <div className="container mx-auto p-4 rtl mb-10 space-y-10">
       
-      {/* العنوان الرئيسي */}
       <h1 className="text-3xl font-black mb-6 text-gray-800 flex items-center gap-2">
         <span>🧠</span> التوصيات واستراتيجيات التداول
       </h1>
       
-      {/* 1. لوحة المخاطر */}
       <RiskDashboard scanSummary={data?.summary} />
 
-      {/* ========================================== */}
-      {/* 2. قسم ماسح ما بعد الإغلاق (الجديد) */}
-      {/* ========================================== */}
       <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-200 pb-4">
           <div>
@@ -208,7 +215,6 @@ export default function StrategiesPage() {
           </button>
         </div>
 
-        {/* فلاتر ما بعد الإغلاق */}
         <div className="flex flex-wrap gap-2 mb-6">
           {pmTabs.map((tab) => (
             <button
@@ -223,7 +229,6 @@ export default function StrategiesPage() {
           ))}
         </div>
 
-        {/* عرض فرص ما بعد الإغلاق */}
         {isPmLoading ? (
           <div className="text-center py-10 font-bold text-slate-500">⏳ جاري تحميل الفرص الاستراتيجية...</div>
         ) : pmOpportunities.length === 0 ? (
@@ -233,7 +238,6 @@ export default function StrategiesPage() {
             {getFilteredOpportunities().map((opp) => (
               <div key={opp.id} className="bg-white p-5 rounded-xl border-t-4 border-slate-800 shadow-md flex flex-col justify-between hover:shadow-xl transition-shadow relative overflow-hidden">
                 
-                {/* شريط الجودة التحذيري (لو البيانات ضعيفة) */}
                 {(opp.data_quality === 'Poor' || opp.data_quality === 'Warning') && (
                   <div className="absolute top-0 right-0 left-0 bg-red-500 text-white text-[10px] text-center font-bold py-0.5">
                     ⚠️ تحذير: جودة البيانات أو السيولة ضعيفة لهذا السهم
@@ -247,25 +251,25 @@ export default function StrategiesPage() {
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <span className="px-3 py-1 bg-slate-100 text-slate-800 rounded-lg text-lg font-black border border-slate-200">
-                      Score: {opp.score}
+                      التقييم: {opp.score}
                     </span>
-                    <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{opp.opportunity_type}</span>
+                    <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                      {translateOppType(opp.opportunity_type)}
+                    </span>
                   </div>
                 </div>
 
-                {/* البادجات الجديدة (Status + RR) */}
                 <div className="flex flex-wrap gap-2 mb-4">
                   {getStatusBadge(opp.status, opp.entry_confirmation)}
                   <span className={`px-2 py-1 text-xs font-black rounded border flex items-center gap-1 ${getRRBadgeColor(opp.risk_reward_ratio)}`}>
-                    ⚖️ R:R {opp.risk_reward_ratio}
+                    ⚖️ العائد/المخاطرة {opp.risk_reward_ratio}
                   </span>
                 </div>
 
-                {/* مؤشر نسبة اليقين (Confidence Bar) */}
                 {opp.confidence !== undefined && (
                   <div className="mb-5 bg-slate-50 p-3 rounded-lg border border-slate-100">
                     <div className="flex justify-between text-xs font-bold text-slate-600 mb-2">
-                      <span>نسبة اليقين (Confidence)</span>
+                      <span>نسبة اليقين</span>
                       <span className={opp.confidence >= 70 ? 'text-green-600' : opp.confidence >= 40 ? 'text-amber-600' : 'text-red-600'}>
                         {opp.confidence}%
                       </span>
@@ -284,7 +288,7 @@ export default function StrategiesPage() {
                   <div className="flex flex-wrap gap-1">
                     {opp.reasons.map((r, i) => (
                       <span key={i} className="px-2 py-1 bg-blue-50 text-blue-700 text-[11px] font-bold rounded border border-blue-100">
-                        ✓ {r.replace('Primary: ', '')}
+                        ✓ {translateReason(r)}
                       </span>
                     ))}
                   </div>
@@ -333,9 +337,6 @@ export default function StrategiesPage() {
 
       <hr className="border-gray-300" />
 
-      {/* ========================================== */}
-      {/* 3. قسم الرادار اللحظي القديم (أثناء الجلسة) */}
-      {/* ========================================== */}
       <div>
         <h2 className="text-2xl font-black mb-6 text-gray-800 flex items-center gap-2">
           <span className="text-red-500">⚡</span> الرادار اللحظي (Intraday)
