@@ -10,9 +10,9 @@ export interface PostMarketOpportunity {
   symbol: string;
   price: number;
   score: number;
-  confidence?: number;       // [جديد] نسبة الثقة
-  status?: string;           // [جديد] حالة السهم
-  data_quality?: string;     // [جديد] جودة البيانات
+  confidence?: number;       
+  status?: string;           
+  data_quality?: string;     
   opportunity_type: string;
   setup_quality: string;
   entry_confirmation: string;
@@ -25,9 +25,14 @@ export interface PostMarketOpportunity {
   risk_reward_ratio: number;
   reasons: string[];
   scenarios: {
-    Positive: string;
-    Neutral: string;
-    Negative: string;
+    Positive?: string;
+    Neutral?: string;
+    Negative?: string;
+    Warnings?: string;     // تم إضافة هذا الحقل لحل الخطأ
+    Status?: string;       // أضفنا باقي حقول المحرك الجديد احتياطياً
+    Confidence?: string;
+    Data_Quality?: string;
+    RR_Details?: string;
   };
 }
 
