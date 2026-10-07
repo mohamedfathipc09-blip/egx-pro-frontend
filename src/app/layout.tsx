@@ -71,6 +71,14 @@ export default function RootLayout({
             >
               <span className="text-xl">📋</span> محفظة المتابعة
             </Link>
+
+            {/* 👇 الزر الجديد الخاص بصفحة الأداء والإحصائيات */}
+            <Link 
+              href="/performance" 
+              className="flex items-center gap-3 font-bold text-gray-600 hover:text-indigo-700 hover:bg-indigo-50 p-3 rounded-xl transition-all mt-4 border-t border-gray-100 pt-6"
+            >
+              <span className="text-xl">📊</span> الأداء والإحصائيات
+            </Link>
           </nav>
           
           {/* تذييل القائمة الجانبية */}
