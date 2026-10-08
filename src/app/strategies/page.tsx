@@ -2,6 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import RiskDashboard from '@/components/Risk/RiskDashboard';
 
+// ==========================================
+// 1. تعريف واجهات البيانات للمحرك الجديد (Smart Top 10)
+// ==========================================
 export interface SmartRecommendation {
   symbol: string;
   sector: string;
@@ -24,9 +27,9 @@ export default function StrategiesPage() {
   // 🚀 النظام الهجين (Hybrid Architecture) 🚀
   // ==========================================
   const RENDER_API_URL = 'https://egx-pro-api.onrender.com/api'; // لجلب البيانات وحفظ المحفظة
-  const LOCAL_API_URL = 'http://127.0.0.1:8000/api';             // لتشغيل محركات الفحص والرادار فقط (لتخطي الحظر)
+  const LOCAL_API_URL = 'http://127.0.0.1:8000/api';             // لتشغيل الفحص وتخطي حظر الـ IPs
 
-  // State الخاص بمحرك التوصيات الذكي
+  // State الخاص بمحرك التوصيات الذكي (Top 10)
   const [smartOpportunities, setSmartOpportunities] = useState<SmartRecommendation[]>([]);
   const [isSmartLoading, setIsSmartLoading] = useState(true);
   const [isManualScanning, setIsManualScanning] = useState(false);
@@ -34,7 +37,7 @@ export default function StrategiesPage() {
   const [smartFilter, setSmartFilter] = useState<string>('🔥 أفضل الفرص');
   const [lastUpdate, setLastUpdate] = useState<string>('');
 
-  // State الخاص بالرادار اللحظي
+  // State الخاص بالرادار اللحظي القديم
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
@@ -43,30 +46,62 @@ export default function StrategiesPage() {
     fetchSmartTop10();
   }, []);
 
-  // 1️⃣ جلب البيانات من (Render)
+  // 1️⃣ جلب البيانات من (Render) وتحويلها للواجهة لتجنب الشاشة البيضاء
   const fetchSmartTop10 = async () => {
     setIsSmartLoading(true);
     setSmartError("");
     try {
       const res = await fetch(`${RENDER_API_URL}/recommendations/top10`);
       const result = await res.json();
+      
       if (res.ok && result.data && result.data.length > 0) {
-        setSmartOpportunities(result.data);
-        setLastUpdate(new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }));
+        // 🔥 مُترجم البيانات (Data Mapper): لمنع مشكلة الشاشة البيضاء وتوافق البيانات
+        const mappedData = result.data.map((item: any) => {
+          const setup = item.trade_setup || {};
+          const bestStrategy = (item.matched_strategies && item.matched_strategies.length > 0) 
+            ? item.matched_strategies[0] 
+            : null;
+
+          return {
+            symbol: item.symbol || "Unknown",
+            sector: item.name || "EGX", 
+            score: item.score || 0,
+            confidence: (item.score >= 80) ? "High" : ((item.score >= 70) ? "Medium" : "Low"),
+            strategy: bestStrategy ? bestStrategy.strategy_name : "Smart Quant Model",
+            additional_confirmations: item.scenarios?.bullish ? [item.scenarios.bullish] : [],
+            entry_zone: bestStrategy?.entry_zone || `${item.price || 0}`,
+            stop_loss: setup.stop || 0,
+            target_1: setup.tp1 || 0,
+            target_2: setup.tp2 || 0,
+            risk_reward: setup.risk_reward || 0,
+            market_regime: item.market_regime || "UNCLEAR",
+            why: [
+              bestStrategy ? `تم رصد نموذج: ${bestStrategy.strategy_name}` : "تطابق معايير السيولة والمخاطرة",
+              item.scenarios?.bullish || "تمركز سعري إيجابي"
+            ],
+            risk: [
+              item.scenarios?.bearish || "احتمالية تقلبات سعرية",
+              setup.invalidation || `كسر الدعم ${setup.stop} يلغي السيناريو`
+            ]
+          };
+        });
+
+        setSmartOpportunities(mappedData);
+        setLastUpdate(result.last_updated || new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }));
       } else {
         setSmartError(result.message || "لا توجد فرص قوية حالياً تتخطى الفلاتر.");
       }
     } catch (err) {
-      console.error("⚠️ خطأ في جلب البيانات:", err);
+      console.error("⚠️ خطأ في جلب بيانات الفحص الاستراتيجي:", err);
       setSmartError("خطأ في الاتصال بخادم Render.");
     }
     setIsSmartLoading(false);
   };
 
-  // 2️⃣ إعطاء أمر الفحص اليدوي (للسيرفر المحلي)
+  // 2️⃣ إعطاء أمر الفحص اليدوي (للسيرفر المحلي فقط)
   const handleManualScan = async () => {
     setIsManualScanning(true);
-    alert("🔍 جاري إرسال أمر الفحص للمحرك المحلي (TradingView)... يرجى الانتظار 30 ثانية.");
+    alert("🔍 جاري إرسال أمر الفحص للسيرفر المحلي (TradingView)... يرجى الانتظار (حوالي 30 ثانية).");
     
     try {
       const response = await fetch(`${LOCAL_API_URL}/scanner/run-manual`, {
@@ -77,7 +112,7 @@ export default function StrategiesPage() {
       if (result.status === "success") {
         alert("✅ الفحص المحلي اكتمل وتم الرفع للسحابة! جاري تحديث الصفحة...");
         setTimeout(() => {
-          fetchSmartTop10(); // يجلب البيانات الجديدة من Render بعد رفعها
+          fetchSmartTop10();
           setIsManualScanning(false);
         }, 3000);
       } else {
@@ -86,7 +121,7 @@ export default function StrategiesPage() {
       }
     } catch (error) {
       console.error("خطأ في الاتصال:", error);
-      alert("⚠️ فشل الاتصال. تأكد أن السيرفر المحلي (Uvicorn) يعمل على جهازك.");
+      alert("⚠️ فشل الاتصال. تأكد من تشغيل الباك إند المحلي على جهازك.");
       setIsManualScanning(false);
     }
   };
@@ -94,7 +129,7 @@ export default function StrategiesPage() {
   // 3️⃣ إضافة للمحفظة (على Render)
   const addToWatchlist = async (opp: SmartRecommendation) => {
     try {
-      const entryMax = parseFloat(opp.entry_zone.split(' - ')[1]) || parseFloat(opp.entry_zone);
+      const entryMax = parseFloat(opp.entry_zone.split(' - ')[1]) || parseFloat(opp.entry_zone) || opp.stop_loss * 1.05;
       const payload = {
         symbol: opp.symbol,
         entry_price: entryMax,
@@ -108,25 +143,8 @@ export default function StrategiesPage() {
       });
       alert(`✅ تم إضافة ${opp.symbol} لمحفظة المتابعة بنجاح!`);
     } catch (err) {
-      alert("❌ حدث خطأ أثناء الإضافة للسحابة.");
+      alert("❌ حدث خطأ أثناء الإضافة.");
     }
-  };
-
-  // 4️⃣ تشغيل الرادار اللحظي (على السيرفر المحلي)
-  const startScan = () => {
-    setHasStarted(true);
-    setIsLoading(true);
-    fetch(`${LOCAL_API_URL}/strategies`)
-      .then(res => res.json())
-      .then(result => {
-        setData(result);
-        setIsLoading(false);
-      })
-      .catch(err => {
-        console.error("⚠️ خطأ في جلب بيانات السوق:", err);
-        alert("⚠️ فشل تشغيل الرادار. تأكد أن السيرفر المحلي يعمل.");
-        setIsLoading(false);
-      });
   };
 
   const pmTabs = ['🔥 أفضل الفرص', '📉 قريب من دعم', '🔄 ارتداد من دعم', '🚀 احتمالية اختراق'];
@@ -147,6 +165,23 @@ export default function StrategiesPage() {
       case "Medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
       default: return "bg-gray-100 text-gray-800 border-gray-200";
     }
+  };
+
+  // 4️⃣ الرادار اللحظي (يتصل بالسيرفر المحلي)
+  const startScan = () => {
+    setHasStarted(true);
+    setIsLoading(true);
+    fetch(`${LOCAL_API_URL}/strategies`)
+      .then(res => res.json())
+      .then(result => {
+        setData(result);
+        setIsLoading(false);
+      })
+      .catch(err => {
+        console.error("⚠️ خطأ في جلب بيانات السوق:", err);
+        alert("فشل تشغيل الرادار. تأكد من تشغيل السيرفر المحلي.");
+        setIsLoading(false);
+      });
   };
 
   return (
@@ -188,7 +223,6 @@ export default function StrategiesPage() {
               🔄 تحديث العرض
             </button>
 
-            {/* الزرار ده بيكلم السيرفر المحلي */}
             <button 
               onClick={handleManualScan}
               disabled={isSmartLoading || isManualScanning}
@@ -222,7 +256,7 @@ export default function StrategiesPage() {
         {isSmartLoading ? (
           <div className="text-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-200 border-t-indigo-600 mx-auto mb-4"></div>
-            <span className="font-bold text-slate-500">⏳ جاري جلب البيانات من سيرفر Render...</span>
+            <span className="font-bold text-slate-500">⏳ جاري جلب البيانات من السحابة...</span>
           </div>
         ) : smartError || smartOpportunities.length === 0 ? (
           <div className="text-center py-16 bg-amber-50 rounded-2xl border border-amber-200">
@@ -244,7 +278,7 @@ export default function StrategiesPage() {
                       <h3 className="text-2xl font-black text-slate-800">{opp.symbol}</h3>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md">{opp.sector}</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${opp.market_regime === 'BULLISH' ? 'bg-green-50 border-green-200 text-green-700' : opp.market_regime === 'BEARISH' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${opp.market_regime?.includes('UP') || opp.market_regime === 'BULLISH' ? 'bg-green-50 border-green-200 text-green-700' : opp.market_regime?.includes('DOWN') || opp.market_regime === 'BEARISH' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
                           السوق: {opp.market_regime}
                         </span>
                       </div>
@@ -331,7 +365,6 @@ export default function StrategiesPage() {
                       </ul>
                     </div>
 
-                    {/* الزرار ده بيكلم Render */}
                     <button 
                       onClick={() => addToWatchlist(opp)}
                       className="w-full bg-slate-800 hover:bg-indigo-600 text-white font-bold py-3.5 px-4 rounded-xl transition-colors shadow-md flex justify-center items-center gap-2 mt-4"
@@ -360,7 +393,6 @@ export default function StrategiesPage() {
             <span className="text-6xl block mb-4">🚀</span>
             <h3 className="text-2xl font-bold text-gray-800 mb-3">الرادار اللحظي جاهز</h3>
             <p className="text-gray-500 mb-6">انقر لبدء المسح عبر السيرفر المحلي (TradingView)</p>
-            {/* الزرار ده بيكلم السيرفر المحلي */}
             <button 
               onClick={startScan}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl shadow-md transition-all text-lg flex items-center gap-2 mx-auto"
