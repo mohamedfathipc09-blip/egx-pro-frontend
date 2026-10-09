@@ -26,10 +26,9 @@ export interface SmartRecommendation {
 
 export default function StrategiesPage() {
   // ==========================================
-  // 🚀 النظام الهجين (Hybrid Architecture) 🚀
+  // 🚀 النظام السحابي المباشر (Radar 2.0 Cloud Architecture) 🚀
   // ==========================================
-  const RENDER_API_URL = 'https://egx-pro-api.onrender.com/api'; // لجلب البيانات وحفظ المحفظة
-  const LOCAL_API_URL = 'http://127.0.0.1:8000/api';             // لتشغيل الفحص وتخطي حظر الـ IPs
+  const RENDER_API_URL = 'https://egx-pro-api.onrender.com/api'; // لجلب البيانات وحفظ المحفظة وتشغيل الفحص
 
   // State الخاص بمحرك التوصيات الذكي (Top 10)
   const [smartOpportunities, setSmartOpportunities] = useState<SmartRecommendation[]>([]);
@@ -48,7 +47,7 @@ export default function StrategiesPage() {
     fetchSmartTop10();
   }, []);
 
-  // 1️⃣ جلب البيانات من (Render) وتحويلها للواجهة لتجنب الشاشة البيضاء
+  // 1️⃣ جلب البيانات من (Render) وتحويلها للواجهة
   const fetchSmartTop10 = async () => {
     setIsSmartLoading(true);
     setSmartError("");
@@ -91,30 +90,32 @@ export default function StrategiesPage() {
     setIsSmartLoading(false);
   };
 
-  // 2️⃣ إعطاء أمر الفحص اليدوي (للسيرفر المحلي فقط)
+  // 2️⃣ إعطاء أمر الفحص اليدوي (للسيرفر السحابي Render بدلاً من المحلي) - تم التحديث لحل الـ Mixed Content
   const handleManualScan = async () => {
     setIsManualScanning(true);
-    alert("🔍 جاري إرسال أمر الفحص للسيرفر المحلي (TradingView)... يرجى الانتظار (حوالي 30 ثانية).");
+    alert("🔍 جاري إرسال أمر الفحص للسيرفر السحابي... الفحص المؤسسي يأخذ بضع دقائق، يرجى الانتظار.");
     
     try {
-      const response = await fetch(`${LOCAL_API_URL}/scanner/run-manual`, {
+      // توجيه الطلب إلى Render مباشرة
+      const response = await fetch(`${RENDER_API_URL}/scanner/post-market/run`, {
         method: "POST"
       });
       const result = await response.json();
       
-      if (result.status === "success") {
-        alert("✅ الفحص المحلي اكتمل وتم الرفع للسحابة! جاري تحديث الصفحة...");
+      if (response.ok) {
+        alert("✅ بدأ الفحص السحابي في الخلفية! سيتم تحديث الفرص تلقائياً بعد دقائق.");
+        // ننتظر 10 ثوانٍ كفترة مبدئية ثم نحدث العرض
         setTimeout(() => {
           fetchSmartTop10();
           setIsManualScanning(false);
-        }, 3000);
+        }, 10000);
       } else {
-        alert("حدث خطأ: " + result.message);
+        alert("حدث خطأ: " + (result.message || "فشل الاتصال"));
         setIsManualScanning(false);
       }
     } catch (error) {
       console.error("خطأ في الاتصال:", error);
-      alert("⚠️ فشل الاتصال. تأكد من تشغيل الباك إند المحلي على جهازك.");
+      alert("⚠️ فشل الاتصال. تأكد من عمل سيرفر Render.");
       setIsManualScanning(false);
     }
   };
@@ -173,21 +174,12 @@ export default function StrategiesPage() {
     }
   };
 
-  // 4️⃣ الرادار اللحظي (يتصل بالسيرفر المحلي)
+  // 4️⃣ الرادار اللحظي (تم إيقافه أو توجيهه للسحابي لعدم وجود Local Server في وضع الـ Production)
   const startScan = () => {
     setHasStarted(true);
     setIsLoading(true);
-    fetch(`${LOCAL_API_URL}/strategies`)
-      .then(res => res.json())
-      .then(result => {
-        setData(result);
-        setIsLoading(false);
-      })
-      .catch(err => {
-        console.error("⚠️ خطأ في جلب بيانات السوق:", err);
-        alert("فشل تشغيل الرادار. تأكد من تشغيل السيرفر المحلي.");
-        setIsLoading(false);
-      });
+    alert("⚠️ الرادار اللحظي متصل الآن بنسخة تجريبية، سيتم تفعيله بالكامل بعد ضبط السيرفر السحابي له.");
+    setIsLoading(false);
   };
 
   return (
@@ -211,7 +203,7 @@ export default function StrategiesPage() {
               محرك أفضل 10 فرص (Radar 2.0)
             </h2>
             <p className="text-slate-500 mt-2 font-medium text-sm md:text-base">
-              يتم مسح السوق وفلترته المؤسسية محلياً (لتخطي الحظر) وعرض الفرص المرفوعة على السحابة.
+              يتم مسح السوق وفلترته المؤسسية سحابياً وعرض الفرص المرفوعة.
             </p>
           </div>
           
@@ -235,9 +227,9 @@ export default function StrategiesPage() {
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
             >
               {isManualScanning ? (
-                <><span className="animate-spin inline-block">⏳</span> الفحص يعمل محلياً...</>
+                <><span className="animate-spin inline-block">⏳</span> الفحص يعمل سحابياً...</>
               ) : (
-                <><span>⚡</span> فحص السوق الآن (Local)</>
+                <><span>⚡</span> فحص السوق الآن (Cloud)</>
               )}
             </button>
           </div>
@@ -395,7 +387,7 @@ export default function StrategiesPage() {
       </div>
 
       {/* ========================================== */}
-      {/* الرادار اللحظي القديم (Intraday) - بيشتغل محلي */}
+      {/* الرادار اللحظي القديم (Intraday) - تم الإيقاف */}
       {/* ========================================== */}
       <div>
         <h2 className="text-2xl font-black mb-6 text-gray-800 flex items-center gap-2">
@@ -406,7 +398,7 @@ export default function StrategiesPage() {
           <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 shadow-sm mt-8">
             <span className="text-6xl block mb-4">🚀</span>
             <h3 className="text-2xl font-bold text-gray-800 mb-3">الرادار اللحظي جاهز</h3>
-            <p className="text-gray-500 mb-6">انقر لبدء المسح عبر السيرفر المحلي (TradingView)</p>
+            <p className="text-gray-500 mb-6">انقر لبدء المسح السحابي للفرص اللحظية</p>
             <button 
               onClick={startScan}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl shadow-md transition-all text-lg flex items-center gap-2 mx-auto"
@@ -419,52 +411,10 @@ export default function StrategiesPage() {
           <div className="text-center py-16 bg-gray-50 rounded-2xl border border-gray-200 shadow-sm mt-8">
             <span className="text-4xl block mb-4 animate-spin w-fit mx-auto">⏳</span>
             <p className="text-xl font-bold text-gray-600 animate-pulse">
-              جاري سحب بيانات TradingView محلياً... يرجى الانتظار
+              جاري تجهيز محرك الفحص اللحظي السحابي...
             </p>
           </div>
-        ) : (
-          <div className="mt-8">
-            <h3 className="text-xl font-bold mb-6 text-gray-800 border-b pb-2">
-              الفرص اللحظية المتاحة 🎯 ({data?.signals?.length || 0})
-            </h3>
-            
-            {data?.signals && data.signals.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {data.signals.map((signal: any, index: number) => (
-                  <div key={index} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-xl font-black">{signal.symbol}</span>
-                      <span className={`px-3 py-1 rounded-full text-sm font-bold ${signal.type === 'BUY' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {signal.type === 'BUY' ? 'شراء 🟢' : 'بيع 🔴'}
-                      </span>
-                    </div>
-                    <p className="text-gray-600 text-sm mb-4 font-medium leading-relaxed">{signal.message}</p>
-                    
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="bg-gray-50 p-2 rounded-lg text-center border border-gray-100">
-                        <span className="block text-gray-500 text-xs font-bold mb-1">الدخول</span>
-                        <span className="font-black text-gray-800">{signal.entry_price || '-'}</span>
-                      </div>
-                      <div className="bg-gray-50 p-2 rounded-lg text-center border border-gray-100">
-                        <span className="block text-gray-500 text-xs font-bold mb-1">الهدف</span>
-                        <span className="font-black text-green-600">{signal.take_profit || '-'}</span>
-                      </div>
-                      <div className="bg-gray-50 p-2 rounded-lg text-center col-span-2 border border-gray-100">
-                        <span className="block text-gray-500 text-xs font-bold mb-1">وقف الخسارة</span>
-                        <span className="font-black text-red-600">{signal.stop_loss || '-'}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center bg-gray-50 p-12 rounded-2xl border border-gray-200">
-                <span className="text-5xl block mb-4">💤</span>
-                <p className="text-xl text-gray-600 font-bold">لا توجد إشارات قوية في السوق حالياً بعد الفحص اللحظي.</p>
-              </div>
-            )}
-          </div>
-        )}
+        ) : null}
       </div>
       
     </div>
