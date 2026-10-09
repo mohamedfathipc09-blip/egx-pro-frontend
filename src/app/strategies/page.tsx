@@ -3,13 +3,15 @@ import React, { useState, useEffect } from 'react';
 import RiskDashboard from '@/components/Risk/RiskDashboard';
 
 // ==========================================
-// 1. تعريف واجهات البيانات للمحرك الجديد (Smart Top 10)
+// 1. تعريف واجهات البيانات للمحرك الجديد (Radar 2.0)
 // ==========================================
 export interface SmartRecommendation {
   symbol: string;
   sector: string;
   score: number;
   confidence: string;
+  opportunity_category: string; // التصنيف الفني
+  signal_type: string;          // WATCHING or BUY
   strategy: string;
   additional_confirmations: string[];
   entry_zone: string;
@@ -55,34 +57,25 @@ export default function StrategiesPage() {
       const result = await res.json();
       
       if (res.ok && result.data && result.data.length > 0) {
-        // 🔥 مُترجم البيانات (Data Mapper): لمنع مشكلة الشاشة البيضاء وتوافق البيانات
+        // 🔥 مُترجم البيانات (Data Mapper): لتوافق بيانات Radar 2.0 الجديدة
         const mappedData = result.data.map((item: any) => {
-          const setup = item.trade_setup || {};
-          const bestStrategy = (item.matched_strategies && item.matched_strategies.length > 0) 
-            ? item.matched_strategies[0] 
-            : null;
-
           return {
             symbol: item.symbol || "Unknown",
-            sector: item.name || "EGX", 
+            sector: item.sector || "EGX", 
             score: item.score || 0,
-            confidence: (item.score >= 80) ? "High" : ((item.score >= 70) ? "Medium" : "Low"),
-            strategy: bestStrategy ? bestStrategy.strategy_name : "Smart Quant Model",
-            additional_confirmations: item.scenarios?.bullish ? [item.scenarios.bullish] : [],
-            entry_zone: bestStrategy?.entry_zone || `${item.price || 0}`,
-            stop_loss: setup.stop || 0,
-            target_1: setup.tp1 || 0,
-            target_2: setup.tp2 || 0,
-            risk_reward: setup.risk_reward || 0,
+            confidence: item.confidence || "Low",
+            opportunity_category: item.opportunity_category || "UNKNOWN",
+            signal_type: item.signal_type || "NEUTRAL",
+            strategy: item.strategy || "Smart Quant Model",
+            additional_confirmations: item.additional_confirmations || [],
+            entry_zone: item.entry_zone || `0 - 0`,
+            stop_loss: item.stop_loss || 0,
+            target_1: item.target_1 || 0,
+            target_2: item.target_2 || 0,
+            risk_reward: item.risk_reward || 0,
             market_regime: item.market_regime || "UNCLEAR",
-            why: [
-              bestStrategy ? `تم رصد نموذج: ${bestStrategy.strategy_name}` : "تطابق معايير السيولة والمخاطرة",
-              item.scenarios?.bullish || "تمركز سعري إيجابي"
-            ],
-            risk: [
-              item.scenarios?.bearish || "احتمالية تقلبات سعرية",
-              setup.invalidation || `كسر الدعم ${setup.stop} يلغي السيناريو`
-            ]
+            why: item.why || ["تم رصد فرصة فنية محتملة."],
+            risk: item.risk || ["تأكد من الالتزام بوقف الخسارة."]
           };
         });
 
@@ -147,23 +140,36 @@ export default function StrategiesPage() {
     }
   };
 
-  const pmTabs = ['🔥 أفضل الفرص', '📉 قريب من دعم', '🔄 ارتداد من دعم', '🚀 احتمالية اختراق'];
+  const pmTabs = ['🔥 أفضل الفرص', '🟢 فرص دخول (BUY)', '🟡 مراقبة (WATCHING)', '🚀 اختراقات', '📉 دعم وارتداد'];
   const getFilteredOpportunities = () => {
     let filtered = [...smartOpportunities];
     switch (smartFilter) {
       case '🔥 أفضل الفرص': return filtered;
-      case '📉 قريب من دعم': return filtered.filter(o => o.strategy.includes('Support') || o.additional_confirmations.some(c => c.includes('Support')));
-      case '🔄 ارتداد من دعم': return filtered.filter(o => o.strategy.includes('Bounce') || o.additional_confirmations.some(c => c.includes('Bounce')));
-      case '🚀 احتمالية اختراق': return filtered.filter(o => o.strategy.includes('Breakout') || o.additional_confirmations.some(c => c.includes('Breakout')));
+      case '🟢 فرص دخول (BUY)': return filtered.filter(o => o.signal_type === 'BUY');
+      case '🟡 مراقبة (WATCHING)': return filtered.filter(o => o.signal_type === 'WATCHING');
+      case '🚀 اختراقات': return filtered.filter(o => o.opportunity_category === 'BREAKOUT');
+      case '📉 دعم وارتداد': return filtered.filter(o => o.opportunity_category.includes('SUPPORT') || o.opportunity_category === 'BOUNCE_CONFIRMED');
       default: return filtered;
     }
   };
 
+  // دوال عرض الشارات للتصنيفات الجديدة
   const getConfidenceBadge = (confidence: string) => {
     switch (confidence) {
       case "High": return "bg-green-100 text-green-800 border-green-200";
       case "Medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
       default: return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  const getCategoryBadge = (category: string) => {
+    switch (category) {
+      case "BOUNCE_CONFIRMED": return <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1">🟢 ارتداد مؤكد</span>;
+      case "BREAKOUT": return <span className="bg-blue-100 text-blue-800 border border-blue-200 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1">🚀 اختراق مقاومة</span>;
+      case "NEAR_SUPPORT": return <span className="bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1">🟡 للمراقبة قرب الدعم</span>;
+      case "FIBONACCI_PULLBACK": return <span className="bg-purple-100 text-purple-800 border border-purple-200 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1">🎯 تصحيح فيبوناتشي</span>;
+      case "TREND_FOLLOWING": return <span className="bg-indigo-100 text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1">📈 تتبع اتجاه</span>;
+      default: return null;
     }
   };
 
@@ -194,7 +200,7 @@ export default function StrategiesPage() {
       <RiskDashboard scanSummary={data?.summary} />
 
       {/* ========================================== */}
-      {/* قسم محرك الترتيب الذكي (Smart Top 10 Engine) */}
+      {/* قسم محرك الترتيب الذكي (Radar 2.0 Engine) */}
       {/* ========================================== */}
       <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
         
@@ -202,10 +208,10 @@ export default function StrategiesPage() {
           <div>
             <h2 className="text-3xl font-black text-indigo-900 flex items-center gap-3">
               <span className="text-blue-600 bg-blue-50 p-2 rounded-xl">🦅</span> 
-              محرك أفضل 10 فرص (Smart Top 10)
+              محرك أفضل 10 فرص (Radar 2.0)
             </h2>
             <p className="text-slate-500 mt-2 font-medium text-sm md:text-base">
-              يتم مسح السوق محلياً (لتخطي الحظر) وعرض الفرص المرفوعة على السحابة.
+              يتم مسح السوق وفلترته المؤسسية محلياً (لتخطي الحظر) وعرض الفرص المرفوعة على السحابة.
             </p>
           </div>
           
@@ -267,11 +273,11 @@ export default function StrategiesPage() {
         ) : (
           <div className="grid grid-cols-1 gap-6">
             {getFilteredOpportunities().map((opp, index) => (
-              <div key={opp.symbol} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-lg transition-all duration-300 group">
+              <div key={opp.symbol} className={`bg-white rounded-2xl shadow-sm border overflow-hidden hover:shadow-lg transition-all duration-300 group ${opp.signal_type === 'WATCHING' ? 'border-amber-200' : 'border-slate-200'}`}>
                 
-                <div className="bg-gradient-to-r from-slate-50 to-white p-5 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className={`p-5 border-b flex flex-col md:flex-row justify-between items-center gap-4 ${opp.signal_type === 'WATCHING' ? 'bg-amber-50/30 border-amber-100' : 'bg-gradient-to-r from-slate-50 to-white border-slate-100'}`}>
                   <div className="flex items-center gap-4 w-full md:w-auto">
-                    <div className="w-12 h-12 flex flex-shrink-0 items-center justify-center bg-indigo-600 text-white font-black text-xl rounded-xl shadow-inner">
+                    <div className={`w-12 h-12 flex flex-shrink-0 items-center justify-center font-black text-xl rounded-xl shadow-inner ${opp.signal_type === 'WATCHING' ? 'bg-amber-500 text-white' : 'bg-indigo-600 text-white'}`}>
                       #{index + 1}
                     </div>
                     <div>
@@ -286,6 +292,9 @@ export default function StrategiesPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2 justify-start md:justify-end w-full md:w-auto">
+                    {/* بادج تصنيف الفرصة الجديد */}
+                    {getCategoryBadge(opp.opportunity_category)}
+                    
                     <span className={`px-3 py-1.5 rounded-lg text-sm font-bold border ${getConfidenceBadge(opp.confidence)}`}>
                       الثقة: {opp.confidence}
                     </span>
@@ -300,7 +309,7 @@ export default function StrategiesPage() {
                   <div className="md:col-span-4 space-y-4">
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">الاستراتيجية الرئيسية</span>
-                      <div className="bg-purple-50 text-purple-700 px-4 py-2.5 rounded-xl font-bold border border-purple-200 text-center text-sm shadow-sm">
+                      <div className={`px-4 py-2.5 rounded-xl font-bold border text-center text-sm shadow-sm ${opp.signal_type === 'WATCHING' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
                         {opp.strategy}
                       </div>
                     </div>
@@ -312,15 +321,15 @@ export default function StrategiesPage() {
                       </div>
                       <div className="flex justify-between items-center py-2 border-b border-slate-200">
                         <span className="text-red-500 font-bold text-xs">وقف الخسارة</span>
-                        <span className="font-black text-red-600" dir="ltr">{opp.stop_loss.toFixed(2)}</span>
+                        <span className="font-black text-red-600" dir="ltr">{Number(opp.stop_loss).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between items-center py-2 border-b border-slate-200">
                         <span className="text-green-600 font-bold text-xs">الهدف الأول</span>
-                        <span className="font-black text-green-700" dir="ltr">{opp.target_1.toFixed(2)}</span>
+                        <span className="font-black text-green-700" dir="ltr">{Number(opp.target_1).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between items-center pt-2">
                         <span className="text-indigo-600 font-bold text-xs">العائد/المخاطرة</span>
-                        <span className="font-black text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded" dir="ltr">1 : {opp.risk_reward}</span>
+                        <span className="font-black text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded" dir="ltr">1 : {Number(opp.risk_reward).toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
@@ -367,9 +376,14 @@ export default function StrategiesPage() {
 
                     <button 
                       onClick={() => addToWatchlist(opp)}
-                      className="w-full bg-slate-800 hover:bg-indigo-600 text-white font-bold py-3.5 px-4 rounded-xl transition-colors shadow-md flex justify-center items-center gap-2 mt-4"
+                      disabled={opp.signal_type === 'WATCHING'}
+                      className={`w-full font-bold py-3.5 px-4 rounded-xl transition-colors shadow-md flex justify-center items-center gap-2 mt-4 
+                        ${opp.signal_type === 'WATCHING' 
+                          ? 'bg-slate-200 text-slate-500 cursor-not-allowed' 
+                          : 'bg-slate-800 hover:bg-indigo-600 text-white'}`}
                     >
-                      <span>➕</span> إضافة للمحفظة
+                      <span>➕</span> 
+                      {opp.signal_type === 'WATCHING' ? 'في الانتظار (لم يتحقق التأكيد)' : 'إضافة للمحفظة'}
                     </button>
                   </div>
 
