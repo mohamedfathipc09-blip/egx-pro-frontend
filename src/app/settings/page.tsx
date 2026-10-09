@@ -27,7 +27,8 @@ function AnalysisContent() {
     setData(null);
 
     try {
-      const res = await fetch(`https://egx-pro-api.onrender.com/api/analyze/${targetSymbol}?interval=${interval}`);
+      const res = await fetch(`// استبدل رابط localhost بالرابط السحابي ده
+      const res = await fetch('https://egx-pro-api.onrender.com/api/recommendations/top10');}`);
       if (!res.ok) throw new Error('فشل جلب البيانات، تأكد من كود السهم أو استجابة السيرفر.');
       const result = await res.json();
       setData(result);
