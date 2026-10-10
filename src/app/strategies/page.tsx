@@ -26,17 +26,23 @@ export interface SmartRecommendation {
 
 export default function StrategiesPage() {
   // ==========================================
-  // 🚀 النظام السحابي المباشر (Radar 2.0 Cloud Architecture) 🚀
+  // 🚀 النظام السحابي المباشر (Radar 2.0 Cloud Architecture)
   // ==========================================
-  const RENDER_API_URL = 'https://egx-pro-api.onrender.com/api'; // لجلب البيانات وحفظ المحفظة وتشغيل الفحص
+  const RENDER_API_URL = 'https://egx-pro-api.onrender.com/api'; 
 
-  // State الخاص بمحرك التوصيات الذكي (Top 10)
+  // State الخاص بمحرك التوصيات الذكي
   const [smartOpportunities, setSmartOpportunities] = useState<SmartRecommendation[]>([]);
   const [isSmartLoading, setIsSmartLoading] = useState(true);
   const [isManualScanning, setIsManualScanning] = useState(false);
   const [smartError, setSmartError] = useState("");
   const [smartFilter, setSmartFilter] = useState<string>('🔥 أفضل الفرص');
   const [lastUpdate, setLastUpdate] = useState<string>('');
+
+  // State الخاص بالذكاء الاصطناعي (AI Modal)
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [aiSymbol, setAiSymbol] = useState("");
+  const [currentAiReport, setCurrentAiReport] = useState("");
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   // State الخاص بالرادار اللحظي القديم
   const [data, setData] = useState<any>(null);
@@ -56,7 +62,6 @@ export default function StrategiesPage() {
       const result = await res.json();
       
       if (res.ok && result.data && result.data.length > 0) {
-        // 🔥 مُترجم البيانات (Data Mapper): لتوافق بيانات Radar 2.0 الجديدة
         const mappedData = result.data.map((item: any) => {
           return {
             symbol: item.symbol || "Unknown",
@@ -90,13 +95,12 @@ export default function StrategiesPage() {
     setIsSmartLoading(false);
   };
 
-  // 2️⃣ إعطاء أمر الفحص اليدوي (للسيرفر السحابي Render بدلاً من المحلي) - تم التحديث لحل الـ Mixed Content
+  // 2️⃣ إعطاء أمر الفحص اليدوي
   const handleManualScan = async () => {
     setIsManualScanning(true);
     alert("🔍 جاري إرسال أمر الفحص للسيرفر السحابي... الفحص المؤسسي يأخذ بضع دقائق، يرجى الانتظار.");
     
     try {
-      // توجيه الطلب إلى Render مباشرة
       const response = await fetch(`${RENDER_API_URL}/scanner/post-market/run`, {
         method: "POST"
       });
@@ -104,7 +108,6 @@ export default function StrategiesPage() {
       
       if (response.ok) {
         alert("✅ بدأ الفحص السحابي في الخلفية! سيتم تحديث الفرص تلقائياً بعد دقائق.");
-        // ننتظر 10 ثوانٍ كفترة مبدئية ثم نحدث العرض
         setTimeout(() => {
           fetchSmartTop10();
           setIsManualScanning(false);
@@ -120,7 +123,7 @@ export default function StrategiesPage() {
     }
   };
 
-  // 3️⃣ إضافة للمحفظة (على Render)
+  // 3️⃣ إضافة للمحفظة 
   const addToWatchlist = async (opp: SmartRecommendation) => {
     try {
       const entryMax = parseFloat(opp.entry_zone.split(' - ')[1]) || parseFloat(opp.entry_zone) || opp.stop_loss * 1.05;
@@ -141,6 +144,30 @@ export default function StrategiesPage() {
     }
   };
 
+  // 4️⃣ استدعاء تقرير الذكاء الاصطناعي (AI)
+  const openAiReport = async (symbol: string) => {
+    setAiSymbol(symbol);
+    setCurrentAiReport("");
+    setIsAiLoading(true);
+    setIsAiModalOpen(true);
+
+    try {
+      // استدعاء رابط الذكاء الاصطناعي من الباك إند
+      const response = await fetch(`${RENDER_API_URL}/analyze/${symbol}`);
+      const data = await response.json();
+
+      if (response.ok && data.report_text) {
+        setCurrentAiReport(data.report_text);
+      } else {
+        setCurrentAiReport("⚠️ لم يتم العثور على التقرير أو حدث خطأ أثناء التوليد.");
+      }
+    } catch (error) {
+      console.error("AI Fetch Error:", error);
+      setCurrentAiReport("❌ فشل الاتصال بخادم الذكاء الاصطناعي.");
+    }
+    setIsAiLoading(false);
+  };
+
   const pmTabs = ['🔥 أفضل الفرص', '🟢 فرص دخول (BUY)', '🟡 مراقبة (WATCHING)', '🚀 اختراقات', '📉 دعم وارتداد'];
   const getFilteredOpportunities = () => {
     let filtered = [...smartOpportunities];
@@ -154,11 +181,11 @@ export default function StrategiesPage() {
     }
   };
 
-  // دوال عرض الشارات للتصنيفات الجديدة
+  // دوال عرض الشارات
   const getConfidenceBadge = (confidence: string) => {
     switch (confidence) {
-      case "High": return "bg-green-100 text-green-800 border-green-200";
-      case "Medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      case "عالية": case "High": return "bg-green-100 text-green-800 border-green-200";
+      case "متوسطة": case "Medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
       default: return "bg-gray-100 text-gray-800 border-gray-200";
     }
   };
@@ -174,7 +201,6 @@ export default function StrategiesPage() {
     }
   };
 
-  // 4️⃣ الرادار اللحظي (تم إيقافه أو توجيهه للسحابي لعدم وجود Local Server في وضع الـ Production)
   const startScan = () => {
     setHasStarted(true);
     setIsLoading(true);
@@ -276,7 +302,7 @@ export default function StrategiesPage() {
                       <h3 className="text-2xl font-black text-slate-800">{opp.symbol}</h3>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md">{opp.sector}</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${opp.market_regime?.includes('UP') || opp.market_regime === 'BULLISH' ? 'bg-green-50 border-green-200 text-green-700' : opp.market_regime?.includes('DOWN') || opp.market_regime === 'BEARISH' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${opp.market_regime?.includes('UP') || opp.market_regime === 'صاعد' ? 'bg-green-50 border-green-200 text-green-700' : opp.market_regime?.includes('DOWN') || opp.market_regime === 'هابط' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
                           السوق: {opp.market_regime}
                         </span>
                       </div>
@@ -284,14 +310,13 @@ export default function StrategiesPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2 justify-start md:justify-end w-full md:w-auto">
-                    {/* بادج تصنيف الفرصة الجديد */}
                     {getCategoryBadge(opp.opportunity_category)}
                     
                     <span className={`px-3 py-1.5 rounded-lg text-sm font-bold border ${getConfidenceBadge(opp.confidence)}`}>
                       الثقة: {opp.confidence}
                     </span>
                     <span className="px-3 py-1.5 rounded-lg text-sm font-black bg-blue-50 text-blue-700 border border-blue-200">
-                      Score: {opp.score}/100
+                      التقييم: {opp.score}/100
                     </span>
                   </div>
                 </div>
@@ -366,17 +391,27 @@ export default function StrategiesPage() {
                       </ul>
                     </div>
 
-                    <button 
-                      onClick={() => addToWatchlist(opp)}
-                      disabled={opp.signal_type === 'WATCHING'}
-                      className={`w-full font-bold py-3.5 px-4 rounded-xl transition-colors shadow-md flex justify-center items-center gap-2 mt-4 
-                        ${opp.signal_type === 'WATCHING' 
-                          ? 'bg-slate-200 text-slate-500 cursor-not-allowed' 
-                          : 'bg-slate-800 hover:bg-indigo-600 text-white'}`}
-                    >
-                      <span>➕</span> 
-                      {opp.signal_type === 'WATCHING' ? 'في الانتظار (لم يتحقق التأكيد)' : 'إضافة للمحفظة'}
-                    </button>
+                    {/* أزرار الإجراءات */}
+                    <div className="grid grid-cols-2 gap-3 mt-4">
+                      <button 
+                        onClick={() => openAiReport(opp.symbol)}
+                        className="w-full font-bold py-3.5 px-2 rounded-xl transition-colors shadow-sm border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 flex justify-center items-center gap-1.5 text-sm"
+                      >
+                        <span>🤖</span> تقرير AI
+                      </button>
+
+                      <button 
+                        onClick={() => addToWatchlist(opp)}
+                        disabled={opp.signal_type === 'WATCHING'}
+                        className={`w-full font-bold py-3.5 px-2 rounded-xl transition-colors shadow-sm flex justify-center items-center gap-1.5 text-sm
+                          ${opp.signal_type === 'WATCHING' 
+                            ? 'bg-slate-200 text-slate-500 cursor-not-allowed' 
+                            : 'bg-slate-800 hover:bg-indigo-600 text-white'}`}
+                      >
+                        <span>➕</span> 
+                        {opp.signal_type === 'WATCHING' ? 'انتظار' : 'للمحفظة'}
+                      </button>
+                    </div>
                   </div>
 
                 </div>
@@ -385,6 +420,53 @@ export default function StrategiesPage() {
           </div>
         )}
       </div>
+
+      {/* ========================================== */}
+      {/* النافذة المنبثقة (Modal) للذكاء الاصطناعي */}
+      {/* ========================================== */}
+      {isAiModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl relative rtl border border-slate-200 overflow-hidden">
+            
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50">
+              <h2 className="text-2xl font-black text-indigo-900 flex items-center gap-2">
+                <span>🤖</span> التقرير الفني الذكي <span className="text-blue-600">({aiSymbol})</span>
+              </h2>
+              <button 
+                onClick={() => setIsAiModalOpen(false)} 
+                className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              {isAiLoading ? (
+                <div className="text-center py-16">
+                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-200 border-t-blue-600 mx-auto mb-4"></div>
+                  <p className="text-lg font-bold text-slate-600">جاري قراءة البيانات وتوليد التقرير المؤسسي...</p>
+                  <p className="text-sm text-slate-400 mt-2">قد يستغرق الأمر بضع ثوانٍ</p>
+                </div>
+              ) : (
+                <div className="prose prose-slate max-w-none rtl" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>
+                  {/* يتم عرض نص الماركداون هنا */}
+                  <div className="text-slate-700 font-medium text-[15px]">
+                    {currentAiReport}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 bg-slate-50 text-center">
+              <p className="text-xs text-slate-400">
+                ⚠️ هذا التقرير مُولد آلياً بواسطة نماذج الذكاء الاصطناعي بناءً على القراءات الفنية ولا يمثل دعوة صريحة للبيع أو الشراء.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ========================================== */}
       {/* الرادار اللحظي القديم (Intraday) - تم الإيقاف */}
