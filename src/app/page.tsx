@@ -22,7 +22,7 @@ function AnalysisContent() {
     const targetInterval = overrideInterval || interval;
     
     if (!targetSymbol) {
-      setError('يرجى إدخال كود السهم أولاً');
+      setError('يرجى إدخال كود السهم أولاً (مثال: COMI)');
       return;
     }
     
@@ -32,14 +32,15 @@ function AnalysisContent() {
     setBacktestData(null);
 
     try {
+      // التوجيه الذكي بين اللوكال والسحابي
       const isLocal = window.location.hostname === 'localhost';
       const baseUrl = isLocal ? 'http://localhost:8000' : 'https://egx-pro-api.onrender.com';
       
       const res = await fetch(`${baseUrl}/api/analyze/${targetSymbol}?interval=${targetInterval}`);
-      if (!res.ok) throw new Error('فشل جلب البيانات، تأكد من كود السهم.');
+      if (!res.ok) throw new Error('فشل جلب البيانات من TradingView. تأكد من كود السهم (بدون .CA).');
       const result = await res.json();
       
-      if (!result || !result.summary || !result.summary.action) {
+      if (!result || !result.summary) {
          throw new Error('لا توجد بيانات كافية لتحليل هذا السهم حالياً.');
       }
       
@@ -69,22 +70,23 @@ function AnalysisContent() {
 
   useEffect(() => {
     if (urlSymbol) {
-      setSymbol(urlSymbol);
-      analyzeStock(urlSymbol);
+      setSymbol(urlSymbol.replace('.CA', ''));
+      analyzeStock(urlSymbol.replace('.CA', ''));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSymbol]);
 
-  // 🔥 دالة قارئ التقرير (المحدثة لقراءة الهيكل المؤسسي والأهداف المتسلسلة)
+  // 🔥 دالة قارئ التقرير (تم تحديثها لتتوافق مع الـ Prompt المؤسسي الصارم)
   const renderReport = (text: string) => {
     if (!text) return null;
-    const cleanText = text.replace(/##/g, '\n##').replace(/- \*\*/g, '\n- **');
+    // تنظيف الماركداون لفصله بشكل صحيح
+    const cleanText = text.replace(/### /g, '\n### ').replace(/- \*\*/g, '\n- **');
     
     return cleanText.split('\n').map((line, idx) => {
       const t = line.trim();
       if (!t) return null;
 
-      // 1. معالجة رسائل الخطأ من السيرفر (Rate Limit 429)
+      // 1. معالجة رسائل الخطأ من السيرفر (Rate Limit)
       if (t.includes('⚠️') && (t.includes('تنبيه') || t.includes('حجب'))) {
         return (
           <div key={idx} className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-lg my-6 shadow-sm">
@@ -93,73 +95,85 @@ function AnalysisContent() {
         );
       }
 
-      // 2. معالجة السيناريوهات الثلاثة (إيجابي، سلبي، عرضي)
-      if (t.startsWith('🟢')) {
-        return <div key={idx} className="bg-green-50 border border-green-200 text-green-900 p-4 rounded-xl my-3 flex gap-3 items-start shadow-sm"><span className="text-xl">🟢</span> <span className="font-bold text-lg">{t.replace('🟢 إيجابي:', 'السيناريو الإيجابي:').replace('🟢', '')}</span></div>;
+      // 2. العناوين الرئيسية (H3 للمحرك الجديد)
+      if (t.startsWith('### ')) {
+        return <h3 key={idx} className="text-xl md:text-2xl font-black text-indigo-900 mt-8 mb-4 border-b-2 border-indigo-100 pb-2 flex items-center gap-2"><span className="text-blue-600">🔹</span> {t.replace('### ', '')}</h3>;
       }
-      if (t.startsWith('🔴')) {
-        return <div key={idx} className="bg-red-50 border border-red-200 text-red-900 p-4 rounded-xl my-3 flex gap-3 items-start shadow-sm"><span className="text-xl">🔴</span> <span className="font-bold text-lg">{t.replace('🔴 سلبي:', 'السيناريو السلبي:').replace('🔴', '')}</span></div>;
-      }
-      if (t.startsWith('🟡')) {
-        return <div key={idx} className="bg-yellow-50 border border-yellow-200 text-yellow-900 p-4 rounded-xl my-3 flex gap-3 items-start shadow-sm"><span className="text-xl">🟡</span> <span className="font-bold text-lg">{t.replace('🟡 عرضي:', 'السيناريو العرضي:').replace('🟡', '')}</span></div>;
+      if (t.startsWith('# ')) {
+        return <h2 key={idx} className="text-2xl md:text-3xl font-black text-gray-800 mb-6 bg-gray-100 p-4 rounded-xl border-r-4 border-blue-600 shadow-sm">{t.replace('# ', '')}</h2>;
       }
 
-      // 3. العناوين الرئيسية
-      if (t.startsWith('## ')) return <h3 key={idx} className="text-xl font-black text-blue-900 mt-8 mb-4 border-b-2 border-blue-100 pb-2">{t.replace('## ', '')}</h3>;
-      if (t.startsWith('# ')) return <h2 key={idx} className="text-2xl font-black text-gray-800 mb-6 bg-gray-100 p-4 rounded-xl border-r-4 border-blue-600 shadow-sm">{t.replace('# ', '')}</h2>;
+      // 3. معالجة السيناريوهات الثلاثة
+      if (t.includes('السيناريو الإيجابي') || t.startsWith('🟢')) {
+        return <div key={idx} className="bg-green-50 border border-green-200 text-green-900 p-4 rounded-xl my-3 flex gap-3 items-start shadow-sm"><span className="text-xl">🟢</span> <span className="font-bold text-base md:text-lg">{t.replace(/- \*\*السيناريو الإيجابي:\*\*|- السيناريو الإيجابي:|🟢/g, 'السيناريو الإيجابي:')}</span></div>;
+      }
+      if (t.includes('السيناريو السلبي') || t.startsWith('🔴')) {
+        return <div key={idx} className="bg-red-50 border border-red-200 text-red-900 p-4 rounded-xl my-3 flex gap-3 items-start shadow-sm"><span className="text-xl">🔴</span> <span className="font-bold text-base md:text-lg">{t.replace(/- \*\*السيناريو السلبي:\*\*|- السيناريو السلبي:|🔴/g, 'السيناريو السلبي:')}</span></div>;
+      }
+      if (t.includes('السيناريو العرضي') || t.startsWith('🟡')) {
+        return <div key={idx} className="bg-yellow-50 border border-yellow-200 text-yellow-900 p-4 rounded-xl my-3 flex gap-3 items-start shadow-sm"><span className="text-xl">🟡</span> <span className="font-bold text-base md:text-lg">{t.replace(/- \*\*السيناريو العرضي:\*\*|- السيناريو العرضي:|🟡/g, 'السيناريو العرضي:')}</span></div>;
+      }
 
-      // 4. معالجة خطة التداول (الأهداف، الدخول، الوقف) لتظهر كبطاقات أنيقة
-      if (t.startsWith('- **')) {
+      // 4. معالجة خطة التداول كبطاقات (Entry, Stop, TP1, TP2, R/R)
+      if (t.startsWith('- **') && t.includes(':')) {
         const match = t.match(/- \*\*(.*?)\*\*(.*)/);
         if (match) {
-          const key = match[1].trim();
-          const value = match[2].trim().replace(/^:/, '').trim();
+          const key = match[1].replace(/:/g, '').trim();
+          const value = match[2].replace(/^:/, '').trim();
           
           let bgClass = "bg-gray-50 border-gray-200";
           let textClass = "text-gray-800";
           
-          if (key.includes('Target') || key.includes('الهدف')) { bgClass = "bg-green-50 border-green-200"; textClass = "text-green-700"; }
-          else if (key.includes('Stop') || key.includes('وقف')) { bgClass = "bg-red-50 border-red-200"; textClass = "text-red-700"; }
-          else if (key.includes('Entry') || key.includes('الدخول')) { bgClass = "bg-blue-50 border-blue-200"; textClass = "text-blue-700"; }
-          else if (key.includes('Risk/Reward') || key.includes('العائد')) { bgClass = "bg-purple-50 border-purple-200"; textClass = "text-purple-700"; }
+          if (key.includes('الهدف')) { bgClass = "bg-green-50 border-green-200"; textClass = "text-green-700"; }
+          else if (key.includes('وقف') || key.includes('SL')) { bgClass = "bg-red-50 border-red-200"; textClass = "text-red-700"; }
+          else if (key.includes('الدخول')) { bgClass = "bg-blue-50 border-blue-200"; textClass = "text-blue-700"; }
+          else if (key.includes('العائد') || key.includes('R/R')) { bgClass = "bg-purple-50 border-purple-200"; textClass = "text-purple-700"; }
+          else if (key.includes('إلغاء') || key.includes('Invalidation')) { bgClass = "bg-orange-50 border-orange-200"; textClass = "text-orange-700"; }
 
-          // إذا كانت من ضمن خطة التداول، نعرضها كبطاقة
-          if (['Target', 'الهدف', 'Stop', 'وقف', 'Entry', 'الدخول', 'Risk/Reward', 'العائد', 'النطاق', 'القوة'].some(k => key.includes(k))) {
+          if (['الهدف', 'وقف', 'الدخول', 'العائد', 'إلغاء', 'R/R'].some(k => key.includes(k))) {
             return (
-              <div key={idx} className={`${bgClass} border rounded-xl p-3 my-2 flex items-center justify-between shadow-sm`} dir="ltr">
-                <span className="font-bold text-gray-700 text-lg capitalize">{key.replace(/:/g, '')}</span>
-                <span className={`font-black text-xl ${textClass}`}>{value}</span>
+              <div key={idx} className={`${bgClass} border rounded-xl p-3 md:p-4 my-2 flex items-center justify-between shadow-sm`}>
+                <span className="font-bold text-gray-700 text-sm md:text-base capitalize">{key}</span>
+                <span className={`font-black text-lg md:text-xl ${textClass}`} dir="ltr">{value}</span>
               </div>
             );
           }
 
-          // نقاط عادية بها Bold
+          // أي نقطة بولد أخرى
           return (
             <li key={idx} className="mr-6 mb-3 text-gray-800 flex items-start gap-3">
               <span className="text-blue-500 mt-1 text-lg">▪</span>
-              <span className="text-lg"><span className="font-bold text-gray-900">{key}:</span> {value}</span>
+              <span className="text-base md:text-lg"><span className="font-bold text-gray-900">{key}:</span> {value}</span>
             </li>
           );
         }
       }
 
-      // 5. النقاط العادية (Bullets)
+      // 5. النقاط العادية والمستويات (S1, R1)
       if (t.startsWith('- ')) {
         return <li key={idx} className="mr-6 mb-2 text-gray-700 flex items-start gap-3">
           <span className="text-gray-400 mt-1 text-lg">▪</span>
-          <span className="text-lg">{t.replace('- ', '')}</span>
+          <span className="text-base md:text-lg">{t.replace('- ', '')}</span>
         </li>;
+      }
+      
+      // بولد داخل نص
+      if (t.startsWith('**') && t.includes(':')) {
+         const match = t.match(/\*\*(.*?)\*\*(.*)/);
+         if (match) {
+             return <p key={idx} className="text-gray-800 leading-relaxed mb-4 text-base md:text-lg"><span className="font-bold text-indigo-900">{match[1]}:</span> {match[2]}</p>;
+         }
       }
 
       // 6. النصوص العادية
-      return <p key={idx} className="text-gray-800 leading-relaxed mb-4 font-medium text-lg">{t}</p>;
+      return <p key={idx} className="text-gray-800 leading-relaxed mb-4 font-medium text-base md:text-lg">{t}</p>;
     });
   };
 
   const getTrendArabic = (trend: string) => {
     if (!trend) return "غير واضح";
-    if (trend.includes("UP")) return "صاعد ↗";
-    if (trend.includes("DOWN")) return "هابط ↘";
+    if (trend.includes("UP") || trend.includes("صاعد")) return "صاعد ↗";
+    if (trend.includes("DOWN") || trend.includes("هابط")) return "هابط ↘";
     return "عرضي ➔";
   };
 
@@ -167,7 +181,7 @@ function AnalysisContent() {
     if (!action) return "محايد";
     const upperAction = action.toUpperCase();
     if (upperAction.includes("STRONG BUY") || action.includes("شراء قوي")) return "شراء قوي 🚀";
-    if (upperAction === "BUY" || action.includes("مرجح")) return "شراء مرجح 🟢";
+    if (upperAction === "BUY" || action.includes("مرجح") || action.includes("صالحة")) return "شراء مرجح 🟢";
     if (upperAction.includes("STRONG SELL") || action.includes("خروج") || action.includes("تجنب")) return "خروج / تجنب 🛑";
     if (upperAction === "SELL" || action.includes("سلبي")) return "سلبي / بيع 🔴";
     return action;
@@ -180,6 +194,7 @@ function AnalysisContent() {
           <span className="text-4xl">📊</span> غرفة التحليل الكمّي
         </h1>
         
+        {/* أزرار الفريم الزمني */}
         <div className="flex flex-wrap justify-center gap-3 mb-6">
           {['15m', '1h', '1d', '1wk', '1mo'].map((intv) => (
             <button
@@ -201,11 +216,12 @@ function AnalysisContent() {
           ))}
         </div>
 
+        {/* حقل البحث */}
         <div className="flex flex-col md:flex-row gap-4">
           <input 
             type="text" 
             value={symbol}
-            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+            onChange={(e) => setSymbol(e.target.value.toUpperCase().replace('.CA', ''))}
             placeholder="أدخل كود السهم (مثل: COMI)"
             className="flex-1 border-2 border-gray-200 p-4 rounded-xl text-center font-black text-xl uppercase focus:outline-none focus:border-blue-600 bg-gray-50 transition-colors"
             onKeyDown={(e) => e.key === 'Enter' && analyzeStock()}
@@ -232,7 +248,8 @@ function AnalysisContent() {
         </div>
       )}
 
-      {data && data.summary && data.summary.action && (
+      {/* عرض البيانات */}
+      {data && data.summary && (
         <div className="flex flex-col gap-6 animate-fade-in">
           
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -243,13 +260,13 @@ function AnalysisContent() {
             
             <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm text-center relative overflow-hidden">
               <p className="text-sm text-gray-500 font-bold mb-2">الاتجاه العام</p>
-              <p className={`text-2xl font-black mt-1 ${data.summary.trend?.includes('UP') ? 'text-green-600' : data.summary.trend?.includes('DOWN') ? 'text-red-600' : 'text-gray-600'}`}>
+              <p className={`text-2xl font-black mt-1 ${data.summary.trend?.includes('UP') || data.summary.trend === 'صاعد' ? 'text-green-600' : data.summary.trend?.includes('DOWN') || data.summary.trend === 'هابط' ? 'text-red-600' : 'text-gray-600'}`}>
                 {getTrendArabic(data.summary.trend)}
               </p>
             </div>
 
             <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm text-center relative overflow-hidden">
-              <p className="text-sm text-gray-500 font-bold mb-2">التقييم الكمّي (Score)</p>
+              <p className="text-sm text-gray-500 font-bold mb-2">التقييم الكمّي</p>
               <p className={`text-3xl font-black ${data.summary.score >= 70 ? 'text-green-600' : data.summary.score <= 45 ? 'text-red-600' : 'text-orange-600'}`} dir="ltr">
                 {data.summary.score} <span className="text-sm text-gray-400">/ 100</span>
               </p>
@@ -271,7 +288,7 @@ function AnalysisContent() {
             
             <div className={`p-5 rounded-2xl border shadow-sm text-center flex flex-col justify-center ${
               getActionArabic(data.summary.action).includes('شراء') ? 'bg-green-600 border-green-700 text-white' :
-              getActionArabic(data.summary.action).includes('خروج') || getActionArabic(data.summary.action).includes('سلبي') || getActionArabic(data.summary.action).includes('بيع') ? 'bg-red-600 border-red-700 text-white' :
+              getActionArabic(data.summary.action).includes('خروج') || getActionArabic(data.summary.action).includes('سلبي') || getActionArabic(data.summary.action).includes('تجنب') ? 'bg-red-600 border-red-700 text-white' :
               'bg-orange-500 border-orange-600 text-white'
             }`}>
               <p className="text-sm font-bold opacity-90 mb-1">القرار الفني</p>
@@ -314,19 +331,23 @@ function AnalysisContent() {
             </div>
           )}
 
-          {data.summary.details && data.summary.details.length > 0 && (
+          {/* تفاصيل التقييم */}
+          {data.summary.scores_breakdown && (
             <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-              <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4">⚙️ تحليل العوامل (Factor Breakdown)</h3>
+              <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4">⚙️ تحليل عوامل التقييم (Score Breakdown)</h3>
               <div className="flex flex-wrap gap-3">
-                {data.summary.details.map((detail: string, idx: number) => {
-                  const [label, scorePart] = detail.split(': ');
-                  if(!scorePart) return null;
-                  return (
+                {Object.entries(data.summary.scores_breakdown).map(([key, val], idx) => {
+                   const labels: any = {
+                     trend: 'الاتجاه', momentum: 'الزخم', liquidity: 'السيولة',
+                     support_resistance: 'الدعوم والمقاومات', entry_quality: 'جودة الدخول',
+                     fibonacci: 'فيبوناتشي', rr_score: 'العائد للمخاطرة'
+                   };
+                   return (
                     <div key={idx} className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 flex items-center gap-3">
-                      <span className="text-sm font-bold text-gray-600">{label}</span>
-                      <span className="text-sm font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded" dir="ltr">{scorePart}</span>
+                      <span className="text-sm font-bold text-gray-600">{labels[key] || key}</span>
+                      <span className="text-sm font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded" dir="ltr">{String(val)}</span>
                     </div>
-                  );
+                   );
                 })}
               </div>
             </div>
