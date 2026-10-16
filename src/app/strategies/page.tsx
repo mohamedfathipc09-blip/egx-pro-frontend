@@ -91,7 +91,7 @@ export interface SmartRecommendation {
 }
 
 export default function StrategiesPage() {
-const RENDER_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:10000/api';
+const RENDER_API_URL = 'https://egx-pro-api.onrender.com/api';
   // States
   const [statusBar, setStatusBar] = useState<MarketStatusBar | null>(null);
   const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
