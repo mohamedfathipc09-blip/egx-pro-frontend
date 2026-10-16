@@ -3,502 +3,623 @@ import React, { useState, useEffect } from 'react';
 import RiskDashboard from '@/components/Risk/RiskDashboard';
 
 // ==========================================
-// 1. تعريف واجهات البيانات للمحرك الجديد (Radar 2.0)
+// 1. واجهات البيانات المحدثة لـ EOD Radar 2.0
 // ==========================================
+export interface MarketStatusBar {
+  session_state: string;
+  session_label_ar: string;
+  last_available_close_date: string;
+  scan_completed_at: string;
+  data_source: string;
+  data_update_status: string;
+  total_scanned: number;
+  passed_data_quality_count: number;
+  qualified_opportunities_count: number;
+  buy_opportunities_count: number;
+  watching_opportunities_count: number;
+  confirmed_breakouts_count: number;
+  support_bounce_count: number;
+  excluded_count: number;
+}
+
+export interface MarketSummary {
+  market_regime: string;
+  egx30_trend: string;
+  egx70_trend: string;
+  advancing_count: number;
+  declining_count: number;
+  unchanged_count: number;
+  advance_decline_ratio: number;
+  total_turnover_egp: number;
+  general_liquidity_state: string;
+  strongest_sectors: { sector: string; avg_change_pct: number; stocks_count: number }[];
+  weakest_sectors: { sector: string; avg_change_pct: number; stocks_count: number }[];
+}
+
+export interface PositionSizing {
+  recommended_shares: number;
+  position_value_egp: number;
+  portfolio_allocation_pct: number;
+  max_loss_allowed_egp: number;
+  actual_trade_risk_egp: number;
+  actual_trade_risk_pct: number;
+  estimated_commission_and_slippage_egp: number;
+}
+
+export interface BacktestSummary {
+  trades_count: number;
+  win_rate: number;
+  expectancy_r: number;
+  profit_factor: number;
+  max_drawdown_pct: number;
+  oos_win_rate: number;
+  sample_warning?: string;
+}
+
 export interface SmartRecommendation {
   symbol: string;
+  name: string;
   sector: string;
-  score: number;
-  confidence: string;
-  opportunity_category: string; // التصنيف الفني
-  signal_type: string;          // WATCHING or BUY
+  price: number;
+  daily_change_pct: number;
+  last_bar_date: string;
+  market_regime: string;
+  opportunity_category: string;
   strategy: string;
-  additional_confirmations: string[];
+  signal_type: string; // BUY or WATCHING
+  score: number;
+  technical_quality_score: number;
+  entry_readiness_score: number;
+  confluence_score: number;
+  confidence: string;
   entry_zone: string;
+  entry_ref: number;
   stop_loss: number;
   target_1: number;
   target_2: number;
+  target_3?: number;
   risk_reward: number;
-  market_regime: string;
+  expected_holding_days: string;
+  invalidation: string;
+  relevant_support?: { low: number; high: number; mid: number; strength_score: number; reason_ar: string };
+  next_resistance?: { low: number; high: number; mid: number };
+  rvol: number;
   why: string[];
-  risk: string[];
+  backtest_summary?: BacktestSummary;
+  position_sizing?: PositionSizing;
+  indicators_table?: { id: number; name: string; type: string; status: string; detail: string }[];
 }
 
 export default function StrategiesPage() {
-  // ==========================================
-  // 🚀 النظام السحابي المباشر (Radar 2.0 Cloud Architecture)
-  // ==========================================
-  const RENDER_API_URL = 'https://egx-pro-api.onrender.com/api'; 
+const RENDER_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:10000/api';
+  // States
+  const [statusBar, setStatusBar] = useState<MarketStatusBar | null>(null);
+  const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
+  
+  // الفئات الـ 7
+  const [categoriesData, setCategoriesData] = useState<{
+    top_qualified: SmartRecommendation[];
+    tested_support_bounce: SmartRecommendation[];
+    volume_breakout: SmartRecommendation[];
+    uptrend_pullback: SmartRecommendation[];
+    unusual_liquidity: SmartRecommendation[];
+    watching_list: SmartRecommendation[];
+    excluded_diagnostics: any[];
+    recommendations_history: any[];
+  }>({
+    top_qualified: [],
+    tested_support_bounce: [],
+    volume_breakout: [],
+    uptrend_pullback: [],
+    unusual_liquidity: [],
+    watching_list: [],
+    excluded_diagnostics: [],
+    recommendations_history: []
+  });
 
-  // State الخاص بمحرك التوصيات الذكي
-  const [smartOpportunities, setSmartOpportunities] = useState<SmartRecommendation[]>([]);
-  const [isSmartLoading, setIsSmartLoading] = useState(true);
-  const [isManualScanning, setIsManualScanning] = useState(false);
-  const [smartError, setSmartError] = useState("");
-  const [smartFilter, setSmartFilter] = useState<string>('🔥 أفضل الفرص');
-  const [lastUpdate, setLastUpdate] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<string>('top_qualified');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // State الخاص بالذكاء الاصطناعي (AI Modal)
+  // Modal AI
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiSymbol, setAiSymbol] = useState("");
   const [currentAiReport, setCurrentAiReport] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // State الخاص بالرادار اللحظي القديم
-  const [data, setData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
-
   useEffect(() => {
-    fetchSmartTop10();
+    fetchEodDashboard();
   }, []);
 
-  // 1️⃣ جلب البيانات من (Render) وتحويلها للواجهة
-  const fetchSmartTop10 = async () => {
-    setIsSmartLoading(true);
-    setSmartError("");
+  const fetchEodDashboard = async () => {
+    setIsLoading(true);
+    setErrorMessage('');
     try {
-      const res = await fetch(`${RENDER_API_URL}/recommendations/top10`);
+      const res = await fetch(`${RENDER_API_URL}/eod-radar/dashboard`);
       const result = await res.json();
-      
-      if (res.ok && result.data && result.data.length > 0) {
-        const mappedData = result.data.map((item: any) => {
-          return {
-            symbol: item.symbol || "Unknown",
-            sector: item.sector || "EGX", 
-            score: item.score || 0,
-            confidence: item.confidence || "Low",
-            opportunity_category: item.opportunity_category || "UNKNOWN",
-            signal_type: item.signal_type || "NEUTRAL",
-            strategy: item.strategy || "Smart Quant Model",
-            additional_confirmations: item.additional_confirmations || [],
-            entry_zone: item.entry_zone || `0 - 0`,
-            stop_loss: item.stop_loss || 0,
-            target_1: item.target_1 || 0,
-            target_2: item.target_2 || 0,
-            risk_reward: item.risk_reward || 0,
-            market_regime: item.market_regime || "UNCLEAR",
-            why: item.why || ["تم رصد فرصة فنية محتملة."],
-            risk: item.risk || ["تأكد من الالتزام بوقف الخسارة."]
-          };
-        });
-
-        setSmartOpportunities(mappedData);
-        setLastUpdate(result.last_updated || new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }));
+      if (res.ok && result.status !== 'empty') {
+        setStatusBar(result.market_status_bar);
+        setMarketSummary(result.market_summary);
+        if (result.categories) {
+          setCategoriesData(result.categories);
+        }
       } else {
-        setSmartError(result.message || "لا توجد فرص قوية حالياً تتخطى الفلاتر.");
+        setErrorMessage(result.message || "لا توجد بيانات مسح محفوظة.");
       }
     } catch (err) {
-      console.error("⚠️ خطأ في جلب بيانات الفحص الاستراتيجي:", err);
-      setSmartError("خطأ في الاتصال بخادم Render.");
+      console.error("خطأ في جلب لوحة EOD Radar:", err);
+      setErrorMessage("فشل الاتصال بخادم السحابة.");
     }
-    setIsSmartLoading(false);
+    setIsLoading(false);
   };
 
-  // 2️⃣ إعطاء أمر الفحص اليدوي
-  const handleManualScan = async () => {
-    setIsManualScanning(true);
-    alert("🔍 جاري إرسال أمر الفحص للسيرفر السحابي... الفحص المؤسسي يأخذ بضع دقائق، يرجى الانتظار.");
-    
+  const handleTriggerScan = async () => {
+    setIsScanning(true);
     try {
-      const response = await fetch(`${RENDER_API_URL}/scanner/post-market/run`, {
-        method: "POST"
-      });
-      const result = await response.json();
-      
-      if (response.ok) {
-        alert("✅ بدأ الفحص السحابي في الخلفية! سيتم تحديث الفرص تلقائياً بعد دقائق.");
+      const res = await fetch(`${RENDER_API_URL}/eod-radar/run-scan?background=true`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || "بدأ فحص نهاية اليوم في الخلفية.");
+        // متابعة حالة التقدم بعد بضع ثوانٍ
         setTimeout(() => {
-          fetchSmartTop10();
-          setIsManualScanning(false);
-        }, 10000);
+          fetchEodDashboard();
+          setIsScanning(false);
+        }, 12000);
       } else {
-        alert("حدث خطأ: " + (result.message || "فشل الاتصال"));
-        setIsManualScanning(false);
+        alert("خطأ: " + (data.message || "فشل بدء الفحص"));
+        setIsScanning(false);
       }
-    } catch (error) {
-      console.error("خطأ في الاتصال:", error);
-      alert("⚠️ فشل الاتصال. تأكد من عمل سيرفر Render.");
-      setIsManualScanning(false);
+    } catch (e) {
+      alert("خطأ في الاتصال بالخادم.");
+      setIsScanning(false);
     }
   };
 
-  // 3️⃣ إضافة للمحفظة 
   const addToWatchlist = async (opp: SmartRecommendation) => {
     try {
-      const entryMax = parseFloat(opp.entry_zone.split(' - ')[1]) || parseFloat(opp.entry_zone) || opp.stop_loss * 1.05;
       const payload = {
         symbol: opp.symbol,
-        entry_price: entryMax,
+        entry_price: opp.entry_ref || opp.price,
         target: opp.target_1,
         stop_loss: opp.stop_loss
       };
-      await fetch(`${RENDER_API_URL}/watchlist`, {
+      const res = await fetch(`${RENDER_API_URL}/watchlist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      alert(`✅ تم إضافة ${opp.symbol} لمحفظة المتابعة بنجاح!`);
+      const data = await res.json();
+      alert(data.message || `✅ تم إضافة ${opp.symbol} لمحفظة المتابعة.`);
     } catch (err) {
       alert("❌ حدث خطأ أثناء الإضافة.");
     }
   };
 
-  // 4️⃣ استدعاء تقرير الذكاء الاصطناعي (AI)
   const openAiReport = async (symbol: string) => {
     setAiSymbol(symbol);
     setCurrentAiReport("");
     setIsAiLoading(true);
     setIsAiModalOpen(true);
-
     try {
-      // استدعاء رابط الذكاء الاصطناعي من الباك إند
-      const response = await fetch(`${RENDER_API_URL}/analyze/${symbol}`);
-      const data = await response.json();
-
-      if (response.ok && data.report_text) {
-        setCurrentAiReport(data.report_text);
+      const res = await fetch(`${RENDER_API_URL}/analyze/${symbol}`);
+      const data = await res.json();
+      if (res.ok && data.summary) {
+        setCurrentAiReport(typeof data.summary === 'string' ? data.summary : JSON.stringify(data.summary, null, 2));
       } else {
-        setCurrentAiReport("⚠️ لم يتم العثور على التقرير أو حدث خطأ أثناء التوليد.");
+        setCurrentAiReport("⚠️ لم يتم العثور على التقرير الفني.");
       }
     } catch (error) {
-      console.error("AI Fetch Error:", error);
-      setCurrentAiReport("❌ فشل الاتصال بخادم الذكاء الاصطناعي.");
+      setCurrentAiReport("❌ فشل الاتصال بخدمة التحليل الذكي.");
     }
     setIsAiLoading(false);
   };
 
-  const pmTabs = ['🔥 أفضل الفرص', '🟢 فرص دخول (BUY)', '🟡 مراقبة (WATCHING)', '🚀 اختراقات', '📉 دعم وارتداد'];
-  const getFilteredOpportunities = () => {
-    let filtered = [...smartOpportunities];
-    switch (smartFilter) {
-      case '🔥 أفضل الفرص': return filtered;
-      case '🟢 فرص دخول (BUY)': return filtered.filter(o => o.signal_type === 'BUY');
-      case '🟡 مراقبة (WATCHING)': return filtered.filter(o => o.signal_type === 'WATCHING');
-      case '🚀 اختراقات': return filtered.filter(o => o.opportunity_category === 'BREAKOUT');
-      case '📉 دعم وارتداد': return filtered.filter(o => o.opportunity_category.includes('SUPPORT') || o.opportunity_category === 'BOUNCE_CONFIRMED');
-      default: return filtered;
-    }
-  };
+  // التبويبات الـ 7
+  const tabsConfig = [
+    { key: 'top_qualified', label: '🔥 أفضل الفرص المؤهلة', count: categoriesData.top_qualified.length },
+    { key: 'tested_support_bounce', label: '📉 ارتداد من دعم مختبر', count: categoriesData.tested_support_bounce.length },
+    { key: 'volume_breakout', label: '🚀 اختراق مقاومة بسيولة', count: categoriesData.volume_breakout.length },
+    { key: 'uptrend_pullback', label: '📈 تصحيح في اتجاه صاعد', count: categoriesData.uptrend_pullback.length },
+    { key: 'unusual_liquidity', label: '⚡ تدفق سيولة غير اعتيادي', count: categoriesData.unusual_liquidity.length },
+    { key: 'watching_list', label: '🟡 فرص المراقبة', count: categoriesData.watching_list.length },
+    { key: 'history_log', label: '📋 سجل التوصيات السابقة', count: categoriesData.recommendations_history.length },
+    { key: 'diagnostics', label: '🛡️ تشخيص الأسهم المستبعدة', count: categoriesData.excluded_diagnostics.length },
+  ];
 
-  // دوال عرض الشارات
-  const getConfidenceBadge = (confidence: string) => {
-    switch (confidence) {
-      case "عالية": case "High": return "bg-green-100 text-green-800 border-green-200";
-      case "متوسطة": case "Medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
+  const getActiveTabOpportunities = () => {
+    switch (activeTab) {
+      case 'top_qualified': return categoriesData.top_qualified;
+      case 'tested_support_bounce': return categoriesData.tested_support_bounce;
+      case 'volume_breakout': return categoriesData.volume_breakout;
+      case 'uptrend_pullback': return categoriesData.uptrend_pullback;
+      case 'unusual_liquidity': return categoriesData.unusual_liquidity;
+      case 'watching_list': return categoriesData.watching_list;
+      default: return [];
     }
-  };
-
-  const getCategoryBadge = (category: string) => {
-    switch (category) {
-      case "BOUNCE_CONFIRMED": return <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1">🟢 ارتداد مؤكد</span>;
-      case "BREAKOUT": return <span className="bg-blue-100 text-blue-800 border border-blue-200 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1">🚀 اختراق مقاومة</span>;
-      case "NEAR_SUPPORT": return <span className="bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1">🟡 للمراقبة قرب الدعم</span>;
-      case "FIBONACCI_PULLBACK": return <span className="bg-purple-100 text-purple-800 border border-purple-200 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1">🎯 تصحيح فيبوناتشي</span>;
-      case "TREND_FOLLOWING": return <span className="bg-indigo-100 text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1">📈 تتبع اتجاه</span>;
-      default: return null;
-    }
-  };
-
-  const startScan = () => {
-    setHasStarted(true);
-    setIsLoading(true);
-    alert("⚠️ الرادار اللحظي متصل الآن بنسخة تجريبية، سيتم تفعيله بالكامل بعد ضبط السيرفر السحابي له.");
-    setIsLoading(false);
   };
 
   return (
-    <div className="container mx-auto p-4 rtl mb-10 space-y-10">
+    <div className="container mx-auto p-4 rtl mb-16 space-y-8">
       
-      <h1 className="text-3xl font-black mb-6 text-gray-800 flex items-center gap-2">
-        <span>🧠</span> التوصيات واستراتيجيات التداول
-      </h1>
-      
-      <RiskDashboard scanSummary={data?.summary} />
-
-      {/* ========================================== */}
-      {/* قسم محرك الترتيب الذكي (Radar 2.0 Engine) */}
-      {/* ========================================== */}
-      <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden">
-        
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-6 border-b border-slate-100">
-          <div>
-            <h2 className="text-3xl font-black text-indigo-900 flex items-center gap-3">
-              <span className="text-blue-600 bg-blue-50 p-2 rounded-xl">🦅</span> 
-              محرك أفضل 10 فرص (Radar 2.0)
-            </h2>
-            <p className="text-slate-500 mt-2 font-medium text-sm md:text-base">
-              يتم مسح السوق وفلترته المؤسسية سحابياً وعرض الفرص المرفوعة.
-            </p>
-          </div>
-          
-          <div className="mt-4 md:mt-0 flex flex-wrap gap-3 items-center">
-            <div className="bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-center">
-              <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">آخر تحديث من السحابة</span>
-              <span className="block font-black text-slate-700">{lastUpdate || "--:--"}</span>
-            </div>
-            
-            <button 
-              onClick={fetchSmartTop10}
-              disabled={isSmartLoading || isManualScanning}
-              className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold py-2 px-4 rounded-xl transition-all disabled:opacity-50"
-            >
-              🔄 تحديث العرض
-            </button>
-
-            <button 
-              onClick={handleManualScan}
-              disabled={isSmartLoading || isManualScanning}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-xl transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
-            >
-              {isManualScanning ? (
-                <><span className="animate-spin inline-block">⏳</span> الفحص يعمل سحابياً...</>
-              ) : (
-                <><span>⚡</span> فحص السوق الآن (Cloud)</>
-              )}
-            </button>
-          </div>
+      {/* العنوان الرئيسي */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+            <span className="bg-indigo-50 text-indigo-700 p-2 rounded-2xl shadow-inner">🦅</span> 
+            التوصيات واستراتيجيات التداول (EOD Radar 2.0)
+          </h1>
+          <p className="text-slate-500 mt-1 font-medium">
+            محرك تداول كمي مؤسسي لنهاية اليوم مع فحص دقيق للسيولة والدعوم والمقاومات واختبارات خارج العينة.
+          </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-8">
-          {pmTabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setSmartFilter(tab)}
-              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                smartFilter === tab 
-                  ? 'bg-indigo-600 text-white shadow-md' 
-                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={fetchEodDashboard}
+            disabled={isLoading}
+            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold py-2.5 px-4 rounded-xl shadow-sm transition-all text-sm"
+          >
+            🔄 تحديث العرض
+          </button>
+          <button
+            onClick={handleTriggerScan}
+            disabled={isScanning}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-5 rounded-xl shadow-md transition-all text-sm flex items-center gap-2 disabled:opacity-50"
+          >
+            {isScanning ? <span className="animate-spin">⏳</span> : <span>⚡</span>}
+            {isScanning ? "المسح يعمل في الخلفية..." : "إعادة المسح اليدوي"}
+          </button>
         </div>
-
-        {isSmartLoading ? (
-          <div className="text-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-200 border-t-indigo-600 mx-auto mb-4"></div>
-            <span className="font-bold text-slate-500">⏳ جاري جلب البيانات من السحابة...</span>
-          </div>
-        ) : smartError || smartOpportunities.length === 0 ? (
-          <div className="text-center py-16 bg-amber-50 rounded-2xl border border-amber-200">
-            <span className="text-5xl block mb-4">🛡️</span>
-            <h3 className="text-xl font-bold text-amber-800 mb-2">{smartError || "لا توجد فرص مؤهلة تتخطى الفلاتر حالياً."}</h3>
-            <p className="text-amber-700 font-medium">حماية رأس المال وعدم التداول العشوائي أفضل من مطاردة فرص ضعيفة.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-6">
-            {getFilteredOpportunities().map((opp, index) => (
-              <div key={opp.symbol} className={`bg-white rounded-2xl shadow-sm border overflow-hidden hover:shadow-lg transition-all duration-300 group ${opp.signal_type === 'WATCHING' ? 'border-amber-200' : 'border-slate-200'}`}>
-                
-                <div className={`p-5 border-b flex flex-col md:flex-row justify-between items-center gap-4 ${opp.signal_type === 'WATCHING' ? 'bg-amber-50/30 border-amber-100' : 'bg-gradient-to-r from-slate-50 to-white border-slate-100'}`}>
-                  <div className="flex items-center gap-4 w-full md:w-auto">
-                    <div className={`w-12 h-12 flex flex-shrink-0 items-center justify-center font-black text-xl rounded-xl shadow-inner ${opp.signal_type === 'WATCHING' ? 'bg-amber-500 text-white' : 'bg-indigo-600 text-white'}`}>
-                      #{index + 1}
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-black text-slate-800">{opp.symbol}</h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md">{opp.sector}</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${opp.market_regime?.includes('UP') || opp.market_regime === 'صاعد' ? 'bg-green-50 border-green-200 text-green-700' : opp.market_regime?.includes('DOWN') || opp.market_regime === 'هابط' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
-                          السوق: {opp.market_regime}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 justify-start md:justify-end w-full md:w-auto">
-                    {getCategoryBadge(opp.opportunity_category)}
-                    
-                    <span className={`px-3 py-1.5 rounded-lg text-sm font-bold border ${getConfidenceBadge(opp.confidence)}`}>
-                      الثقة: {opp.confidence}
-                    </span>
-                    <span className="px-3 py-1.5 rounded-lg text-sm font-black bg-blue-50 text-blue-700 border border-blue-200">
-                      التقييم: {opp.score}/100
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-8">
-                  
-                  <div className="md:col-span-4 space-y-4">
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">الاستراتيجية الرئيسية</span>
-                      <div className={`px-4 py-2.5 rounded-xl font-bold border text-center text-sm shadow-sm ${opp.signal_type === 'WATCHING' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}>
-                        {opp.strategy}
-                      </div>
-                    </div>
-                    
-                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                      <div className="flex justify-between items-center py-2 border-b border-slate-200">
-                        <span className="text-slate-500 font-bold text-xs">منطقة الدخول</span>
-                        <span className="font-black text-slate-800" dir="ltr">{opp.entry_zone}</span>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b border-slate-200">
-                        <span className="text-red-500 font-bold text-xs">وقف الخسارة</span>
-                        <span className="font-black text-red-600" dir="ltr">{Number(opp.stop_loss).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center py-2 border-b border-slate-200">
-                        <span className="text-green-600 font-bold text-xs">الهدف الأول</span>
-                        <span className="font-black text-green-700" dir="ltr">{Number(opp.target_1).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center pt-2">
-                        <span className="text-indigo-600 font-bold text-xs">العائد/المخاطرة</span>
-                        <span className="font-black text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded" dir="ltr">1 : {Number(opp.risk_reward).toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-4 space-y-3 border-t md:border-t-0 md:border-r border-slate-100 pt-4 md:pt-0 md:pr-6">
-                    <h4 className="text-sm font-black text-green-700 mb-3 flex items-center gap-2">
-                      <span className="bg-green-100 p-1 rounded">💡</span> لماذا هذا السهم؟
-                    </h4>
-                    <ul className="space-y-2">
-                      {opp.why.map((reason, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-slate-700 font-medium leading-relaxed">
-                          <span className="text-green-500 mt-0.5">✓</span> {reason}
-                        </li>
-                      ))}
-                    </ul>
-                    
-                    {opp.additional_confirmations.length > 0 && (
-                      <div className="mt-4 pt-4 border-t border-slate-100">
-                        <p className="text-[10px] text-slate-400 font-bold mb-2 uppercase">تأكيدات إضافية:</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {opp.additional_confirmations.map((conf, i) => (
-                            <span key={i} className="text-[10px] px-2 py-1 bg-slate-100 text-slate-600 rounded-md font-bold border border-slate-200">
-                              {conf}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="md:col-span-4 space-y-4 flex flex-col justify-between border-t md:border-t-0 md:border-r border-slate-100 pt-4 md:pt-0 md:pr-6">
-                    <div>
-                      <h4 className="text-sm font-black text-red-600 mb-3 flex items-center gap-2">
-                        <span className="bg-red-100 p-1 rounded">⚠️</span> المخاطر
-                      </h4>
-                      <ul className="space-y-2 bg-red-50 p-4 rounded-xl border border-red-100">
-                        {opp.risk.map((r, i) => (
-                          <li key={i} className="flex items-start gap-2 text-xs text-red-800 font-bold leading-relaxed">
-                            <span>•</span> {r}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* أزرار الإجراءات */}
-                    <div className="grid grid-cols-2 gap-3 mt-4">
-                      <button 
-                        onClick={() => openAiReport(opp.symbol)}
-                        className="w-full font-bold py-3.5 px-2 rounded-xl transition-colors shadow-sm border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 flex justify-center items-center gap-1.5 text-sm"
-                      >
-                        <span>🤖</span> تقرير AI
-                      </button>
-
-                      <button 
-                        onClick={() => addToWatchlist(opp)}
-                        disabled={opp.signal_type === 'WATCHING'}
-                        className={`w-full font-bold py-3.5 px-2 rounded-xl transition-colors shadow-sm flex justify-center items-center gap-1.5 text-sm
-                          ${opp.signal_type === 'WATCHING' 
-                            ? 'bg-slate-200 text-slate-500 cursor-not-allowed' 
-                            : 'bg-slate-800 hover:bg-indigo-600 text-white'}`}
-                      >
-                        <span>➕</span> 
-                        {opp.signal_type === 'WATCHING' ? 'انتظار' : 'للمحفظة'}
-                      </button>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* ========================================== */}
-      {/* النافذة المنبثقة (Modal) للذكاء الاصطناعي */}
-      {/* ========================================== */}
-      {isAiModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl relative rtl border border-slate-200 overflow-hidden">
-            
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50">
-              <h2 className="text-2xl font-black text-indigo-900 flex items-center gap-2">
-                <span>🤖</span> التقرير الفني الذكي <span className="text-blue-600">({aiSymbol})</span>
-              </h2>
-              <button 
-                onClick={() => setIsAiModalOpen(false)} 
-                className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-all"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+      <RiskDashboard />
 
-            <div className="p-6 overflow-y-auto flex-1">
-              {isAiLoading ? (
-                <div className="text-center py-16">
-                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-200 border-t-blue-600 mx-auto mb-4"></div>
-                  <p className="text-lg font-bold text-slate-600">جاري قراءة البيانات وتوليد التقرير المؤسسي...</p>
-                  <p className="text-sm text-slate-400 mt-2">قد يستغرق الأمر بضع ثوانٍ</p>
-                </div>
-              ) : (
-                <div className="prose prose-slate max-w-none rtl" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>
-                  {/* يتم عرض نص الماركداون هنا */}
-                  <div className="text-slate-700 font-medium text-[15px]">
-                    {currentAiReport}
-                  </div>
-                </div>
-              )}
+      {/* ========================================== */}
+      {/* A. شريط حالة السوق (Market Status Bar) */}
+      {/* ========================================== */}
+      {statusBar && (
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl border border-indigo-900/50">
+          <div className="flex flex-wrap justify-between items-center gap-4 pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="font-bold text-emerald-300 text-sm">{statusBar.session_label_ar}</span>
+              <span className="text-slate-500">|</span>
+              <span className="text-slate-300 text-sm">آخر إغلاق: <strong className="text-white">{statusBar.last_available_close_date}</strong></span>
             </div>
-            
-            <div className="p-4 border-t border-slate-100 bg-slate-50 text-center">
-              <p className="text-xs text-slate-400">
-                ⚠️ هذا التقرير مُولد آلياً بواسطة نماذج الذكاء الاصطناعي بناءً على القراءات الفنية ولا يمثل دعوة صريحة للبيع أو الشراء.
-              </p>
+            <div className="text-xs text-slate-400 font-mono">
+              المصدر: {statusBar.data_source} | تم المسح في: {statusBar.scan_completed_at}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 pt-4 text-center">
+            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/50">
+              <span className="block text-[10px] text-slate-400 uppercase font-bold">الأسهم المفحوصة</span>
+              <span className="text-xl font-black text-white">{statusBar.total_scanned}</span>
+            </div>
+            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/50">
+              <span className="block text-[10px] text-slate-400 uppercase font-bold">مطابقة للجودة</span>
+              <span className="text-xl font-black text-blue-400">{statusBar.passed_data_quality_count}</span>
+            </div>
+            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/50">
+              <span className="block text-[10px] text-slate-400 uppercase font-bold">الفرص المؤهلة</span>
+              <span className="text-xl font-black text-emerald-400">{statusBar.qualified_opportunities_count}</span>
+            </div>
+            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/50">
+              <span className="block text-[10px] text-slate-400 uppercase font-bold">فرص الشراء (BUY)</span>
+              <span className="text-xl font-black text-green-400">{statusBar.buy_opportunities_count}</span>
+            </div>
+            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/50">
+              <span className="block text-[10px] text-slate-400 uppercase font-bold">فرص المراقبة</span>
+              <span className="text-xl font-black text-amber-400">{statusBar.watching_opportunities_count}</span>
+            </div>
+            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/50">
+              <span className="block text-[10px] text-slate-400 uppercase font-bold">اختراقات مؤكدة</span>
+              <span className="text-xl font-black text-purple-400">{statusBar.confirmed_breakouts_count}</span>
+            </div>
+            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/50">
+              <span className="block text-[10px] text-slate-400 uppercase font-bold">ارتداد دعم</span>
+              <span className="text-xl font-black text-cyan-400">{statusBar.support_bounce_count}</span>
+            </div>
+            <div className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/50">
+              <span className="block text-[10px] text-slate-400 uppercase font-bold">الأسهم المستبعدة</span>
+              <span className="text-xl font-black text-rose-400">{statusBar.excluded_count}</span>
             </div>
           </div>
         </div>
       )}
 
       {/* ========================================== */}
-      {/* الرادار اللحظي القديم (Intraday) - تم الإيقاف */}
+      {/* B. ملخص السوق (Market Summary) */}
       {/* ========================================== */}
-      <div>
-        <h2 className="text-2xl font-black mb-6 text-gray-800 flex items-center gap-2">
-          <span className="text-red-500">⚡</span> الرادار اللحظي (Intraday)
-        </h2>
+      {marketSummary && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="space-y-3">
+            <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider">حالة السوق واتجاه المؤشرات</h3>
+            <div className="flex items-center gap-2">
+              <span className={`px-3 py-1 rounded-xl text-xs font-black ${marketSummary.market_regime === 'BULLISH' ? 'bg-green-100 text-green-800' : marketSummary.market_regime === 'BEARISH' ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-800'}`}>
+                {marketSummary.market_regime}
+              </span>
+            </div>
+            <p className="text-xs font-bold text-slate-700">EGX30: {marketSummary.egx30_trend}</p>
+            <p className="text-xs font-bold text-slate-700">EGX70: {marketSummary.egx70_trend}</p>
+          </div>
 
-        {!hasStarted ? (
-          <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 shadow-sm mt-8">
-            <span className="text-6xl block mb-4">🚀</span>
-            <h3 className="text-2xl font-bold text-gray-800 mb-3">الرادار اللحظي جاهز</h3>
-            <p className="text-gray-500 mb-6">انقر لبدء المسح السحابي للفرص اللحظية</p>
-            <button 
-              onClick={startScan}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl shadow-md transition-all text-lg flex items-center gap-2 mx-auto"
+          <div className="space-y-3 border-t md:border-t-0 md:border-x border-slate-100 md:px-6">
+            <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider">سلوك السيولة واتساع السوق</h3>
+            <div className="flex justify-between text-xs font-bold">
+              <span className="text-green-600">صاعد: {marketSummary.advancing_count}</span>
+              <span className="text-red-600">هابط: {marketSummary.declining_count}</span>
+              <span className="text-slate-500">ثابت: {marketSummary.unchanged_count}</span>
+            </div>
+            <p className="text-xs font-bold text-slate-700">إجمالي التداول: <span className="font-mono text-indigo-700">{Number(marketSummary.total_turnover_egp).toLocaleString()} ج.م</span></p>
+            <p className="text-xs font-bold text-slate-700">حالة السيولة العامة: <span className="text-blue-600">{marketSummary.general_liquidity_state}</span></p>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider">أداء القطاعات الرئيسية</h3>
+            <div className="space-y-1">
+              <div className="text-xs font-bold text-green-700">🟢 الأقوى: {marketSummary.strongest_sectors[0]?.sector || '---'} ({marketSummary.strongest_sectors[0]?.avg_change_pct || 0}%)</div>
+              <div className="text-xs font-bold text-red-600">🔴 الأضعف: {marketSummary.weakest_sectors[0]?.sector || '---'} ({marketSummary.weakest_sectors[0]?.avg_change_pct || 0}%)</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* C. تبويبات فئات الفرص (Tabs) */}
+      {/* ========================================== */}
+      <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+        
+        <div className="flex flex-wrap gap-2 border-b border-slate-100 pb-4">
+          {tabsConfig.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+                activeTab === tab.key
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
             >
-              <span>بدء مسح السوق الآن</span>
-              <span>⚡</span>
+              <span>{tab.label}</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-black ${activeTab === tab.key ? 'bg-indigo-800 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                {tab.count}
+              </span>
             </button>
+          ))}
+        </div>
+
+        {/* عرض المحتوى حسب التبويب النشط */}
+        {isLoading ? (
+          <div className="text-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-200 border-t-indigo-600 mx-auto mb-4"></div>
+            <span className="font-bold text-slate-500">⏳ جاري تحميل نتائج EOD Radar 2.0...</span>
           </div>
-        ) : isLoading ? (
-          <div className="text-center py-16 bg-gray-50 rounded-2xl border border-gray-200 shadow-sm mt-8">
-            <span className="text-4xl block mb-4 animate-spin w-fit mx-auto">⏳</span>
-            <p className="text-xl font-bold text-gray-600 animate-pulse">
-              جاري تجهيز محرك الفحص اللحظي السحابي...
-            </p>
+        ) : errorMessage ? (
+          <div className="text-center py-16 bg-amber-50 rounded-2xl border border-amber-200">
+            <span className="text-4xl block mb-2">ℹ️</span>
+            <p className="font-bold text-amber-800">{errorMessage}</p>
           </div>
-        ) : null}
+        ) : activeTab === 'history_log' ? (
+          /* سجل التوصيات السابقة */
+          <div className="space-y-4">
+            <h3 className="text-lg font-black text-slate-800 mb-4">📋 سجل التوصيات التاريخية وإحصائيات الأداء</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 text-xs font-black border-b border-slate-200">
+                    <th className="p-3">التاريخ</th>
+                    <th className="p-3">السهم</th>
+                    <th className="p-3">الاستراتيجية</th>
+                    <th className="p-3">الدخول</th>
+                    <th className="p-3">الوقف</th>
+                    <th className="p-3">الهدف 1</th>
+                    <th className="p-3">الحالة</th>
+                    <th className="p-3">النتيجة والسبب</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-sm">
+                  {categoriesData.recommendations_history.map((rec: any, idx: number) => (
+                    <tr key={idx} className="hover:bg-slate-50/50">
+                      <td className="p-3 font-mono text-xs text-slate-500">{rec.signal_date}</td>
+                      <td className="p-3 font-black text-slate-800">{rec.symbol}</td>
+                      <td className="p-3 text-slate-600 text-xs">{rec.strategy}</td>
+                      <td className="p-3 font-mono" dir="ltr">{rec.entry_zone}</td>
+                      <td className="p-3 font-mono text-red-600" dir="ltr">{rec.stop_loss}</td>
+                      <td className="p-3 font-mono text-green-600" dir="ltr">{rec.target_1}</td>
+                      <td className="p-3">
+                        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${rec.state === 'TP1_HIT' ? 'bg-green-100 text-green-800' : rec.state === 'STOP_HIT' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                          {rec.state}
+                        </span>
+                      </td>
+                      <td className="p-3 text-xs text-slate-600 font-medium">{rec.outcome_reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : activeTab === 'diagnostics' ? (
+          /* الأسهم المستبعدة مع الأسباب */
+          <div className="space-y-4">
+            <h3 className="text-lg font-black text-slate-800 mb-4">🛡️ سجل تشخيص استبعاد الأسهم (Data Quality Diagnostics)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {categoriesData.excluded_diagnostics.map((ex: any, idx: number) => (
+                <div key={idx} className="bg-rose-50/50 border border-rose-100 p-4 rounded-2xl flex justify-between items-start gap-4">
+                  <div>
+                    <h4 className="font-black text-rose-900 text-base">{ex.symbol} <span className="text-xs font-normal text-rose-600">({ex.name})</span></h4>
+                    <p className="text-xs text-rose-700 font-medium mt-1">السبب: {ex.reason}</p>
+                  </div>
+                  <span className="text-[10px] font-bold bg-rose-200 text-rose-800 px-2.5 py-1 rounded-md">{ex.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* عرض الفرص الفئوية (Top Qualified / Support Bounce / Breakout / Pullback / Liquidity / Watching) */
+          <div className="grid grid-cols-1 gap-6">
+            {getActiveTabOpportunities().length === 0 ? (
+              <div className="text-center py-16 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-4xl block mb-2">📭</span>
+                <p className="font-bold text-slate-500">لا توجد فرص مطابقة لهذا التصنيف في الفحص الأخير.</p>
+              </div>
+            ) : (
+              getActiveTabOpportunities().map((opp, index) => (
+                <div key={opp.symbol} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md transition-all">
+                  
+                  <div className="p-5 bg-slate-50 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-indigo-600 text-white flex items-center justify-center font-black text-xl rounded-xl shadow-inner">
+                        #{index + 1}
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                          {opp.symbol} <span className="text-xs font-bold text-slate-500">({opp.name})</span>
+                        </h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded">{opp.sector}</span>
+                          <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">إغلاق: {opp.price} ج.م</span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded ${opp.daily_change_pct >= 0 ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'}`}>
+                            {opp.daily_change_pct >= 0 ? '+' : ''}{opp.daily_change_pct}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <span className="px-3 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded-xl text-xs font-black">
+                        جودة فنية: {opp.technical_quality_score}/100
+                      </span>
+                      <span className="px-3 py-1 bg-purple-50 text-purple-800 border border-purple-200 rounded-xl text-xs font-black">
+                        جاهزية الدخول: {opp.entry_readiness_score}/100
+                      </span>
+                      <span className={`px-3 py-1 rounded-xl text-xs font-black border ${opp.signal_type === 'BUY' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-amber-100 text-amber-800 border-amber-200'}`}>
+                        {opp.signal_type === 'BUY' ? '🟢 شراء مؤكد' : '🟡 للمراقبة'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* خطة التداول المستهدفة */}
+                    <div className="space-y-4 bg-slate-50/60 p-4 rounded-2xl border border-slate-200">
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">خطة الصفقة وإدارة المخاطر</h4>
+                      <div className="flex justify-between text-sm py-1 border-b border-slate-200">
+                        <span className="text-slate-500 font-bold">الاستراتيجية:</span>
+                        <span className="font-black text-indigo-900">{opp.strategy}</span>
+                      </div>
+                      <div className="flex justify-between text-sm py-1 border-b border-slate-200">
+                        <span className="text-slate-500 font-bold">منطقة الدخول:</span>
+                        <span className="font-black text-slate-800 font-mono" dir="ltr">{opp.entry_zone}</span>
+                      </div>
+                      <div className="flex justify-between text-sm py-1 border-b border-slate-200">
+                        <span className="text-red-600 font-bold">وقف الخسارة:</span>
+                        <span className="font-black text-red-600 font-mono" dir="ltr">{opp.stop_loss}</span>
+                      </div>
+                      <div className="flex justify-between text-sm py-1 border-b border-slate-200">
+                        <span className="text-green-600 font-bold">الهدف الأول (TP1):</span>
+                        <span className="font-black text-green-700 font-mono" dir="ltr">{opp.target_1}</span>
+                      </div>
+                      <div className="flex justify-between text-sm py-1">
+                        <span className="text-indigo-600 font-bold">العائد/المخاطرة (R:R):</span>
+                        <span className="font-black text-indigo-700 font-mono bg-indigo-100 px-2 py-0.5 rounded" dir="ltr">1 : {opp.risk_reward}</span>
+                      </div>
+                    </div>
+
+                    {/* أسباب الإشارة ونتيجة الباك تيست */}
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-xs font-black text-green-700 uppercase tracking-wider mb-2">أسباب الإشارة الفنية</h4>
+                        <ul className="space-y-1.5">
+                          {opp.why.map((w, i) => (
+                            <li key={i} className="text-xs text-slate-700 font-medium flex items-start gap-1.5">
+                              <span className="text-green-500 font-bold">✓</span> {w}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {opp.backtest_summary && (
+                        <div className="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 text-xs space-y-1">
+                          <span className="font-black text-indigo-900 block mb-1">🧪 نتائج الاختبار التاريخي (Backtest):</span>
+                          <div className="flex justify-between text-slate-700 font-medium">
+                            <span>عدد الصفقات: <strong>{opp.backtest_summary.trades_count}</strong></span>
+                            <span>معدل الفوز: <strong className="text-green-700">{opp.backtest_summary.win_rate}%</strong></span>
+                            <span>Profit Factor: <strong>{opp.backtest_summary.profit_factor}</strong></span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* حاسبة رأس المال وأزرار التفاعل */}
+                    <div className="space-y-4 flex flex-col justify-between">
+                      {opp.position_sizing && (
+                        <div className="bg-slate-900 text-white p-4 rounded-2xl space-y-2 text-xs">
+                          <span className="font-black text-indigo-300 block">💰 مقترح حاسبة المخاطر (2% رأس المال):</span>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">الكمية المقترحة:</span>
+                            <strong className="text-emerald-400">{opp.position_sizing.recommended_shares} سهم</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">إجمالي المبلغ:</span>
+                            <strong>{Number(opp.position_sizing.position_value_egp).toLocaleString()} ج.م</strong>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          onClick={() => openAiReport(opp.symbol)}
+                          className="py-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold rounded-xl text-sm shadow-sm flex justify-center items-center gap-1.5"
+                        >
+                          <span>🤖</span> تقرير AI
+                        </button>
+                        <button
+                          onClick={() => addToWatchlist(opp)}
+                          disabled={opp.signal_type !== 'BUY'}
+                          className={`py-3 font-bold rounded-xl text-sm shadow-md flex justify-center items-center gap-1.5
+                            ${opp.signal_type === 'BUY' ? 'bg-slate-900 hover:bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500 cursor-not-allowed'}`}
+                        >
+                          <span>➕</span> للمحفظة
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
       </div>
-      
+
+      {/* مودال تقرير الذكاء الاصطناعي */}
+      {isAiModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl relative border border-slate-200 overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50">
+              <h2 className="text-2xl font-black text-indigo-900 flex items-center gap-2">
+                <span>🤖</span> التحليل الذكي للسهم <span className="text-blue-600">({aiSymbol})</span>
+              </h2>
+              <button onClick={() => setIsAiModalOpen(false)} className="text-slate-400 hover:text-red-500 p-2 rounded-full">
+                ✕
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 text-slate-700 font-medium text-sm leading-relaxed" style={{ whiteSpace: 'pre-wrap' }}>
+              {isAiLoading ? (
+                <div className="text-center py-16">
+                  <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-200 border-t-blue-600 mx-auto mb-3"></div>
+                  <p className="font-bold text-slate-600">جاري قراءة مؤشرات السهم وتوليد التقرير المؤسسي...</p>
+                </div>
+              ) : (
+                currentAiReport
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
