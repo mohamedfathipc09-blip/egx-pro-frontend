@@ -49,12 +49,12 @@ function AnalysisContent() {
   });
   const [copySuccess, setCopySuccess] = useState(false);
 
-  // التحكم في القسم التعليمي القابل للطي (المرحلة 4 - البند 2)
+  // التحكم في القسم التعليمي القابل للطي
   const [isEduOpen, setIsEduOpen] = useState(false);
   const [eduLevel, setEduLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner');
   const [selectedIndicatorId, setSelectedIndicatorId] = useState<string | null>(null);
 
-  // تخزين مؤقت آمن لمنع إعادة الطلبات المكررة غير الضرورية (المرحلة 8)
+  // تخزين مؤقت آمن لمنع إعادة الطلبات المكررة غير الضرورية
   const analysisCacheRef = useRef<Record<string, { timestamp: number; payload: any }>>({});
 
   const searchParams = useSearchParams();
@@ -200,7 +200,6 @@ function AnalysisContent() {
       localStorage.setItem('egx_pro_favorites', JSON.stringify(updatedFavs));
     }
 
-    // إذا كان لدى المستخدم بيانات سهم محملة، نضيفه أيضاً لمحفظة المتابعة في الباك إند
     if (data?.summary?.current_price) {
       setAddingWatchlist(true);
       setWatchlistStatus('');
@@ -290,7 +289,6 @@ function AnalysisContent() {
   const profReport = summary?.professional_report;
   const btMetrics = backtestData?.metrics || summary?.backtest_summary || {};
 
-  // توحيد القيم المعروضة في البطاقات والتقرير والشارت (Single Source of Truth)
   const unifiedPrice = kpis.current_price ?? summary?.current_price;
   const unifiedChange = kpis.daily_change ?? summary?.daily_change;
   const unifiedChangePct = kpis.daily_change_pct ?? summary?.daily_change_pct;
@@ -335,7 +333,7 @@ function AnalysisContent() {
     return {
       bg: 'bg-slate-900 border-slate-700 text-white',
       badge: 'bg-slate-300 text-slate-950',
-      icon: '🛑 AVOID — عدم فتح صفقة جديدة'
+      icon: '🛑 AVOID — تجنب فتح صفقة جديدة'
     };
   };
 
@@ -345,15 +343,61 @@ function AnalysisContent() {
     return 'text-rose-700 bg-rose-50 border-rose-200';
   };
 
-  const activeSymClean = (summary?.symbol || data?.symbol || symbol || '').replace('.CA', '').toUpperCase();
+  const renderReport = (text: string) => {
+    if (!text) return null;
+    const cleanText = text.replace(/### /g, '\n### ').replace(/## /g, '\n## ').replace(/- \*\*/g, '\n- **');
+
+    return cleanText.split('\n').map((line, idx) => {
+      const t = line.trim();
+      if (!t) return null;
+
+      if (t.includes('⚠️') && (t.includes('تنبيه') || t.includes('حجب') || t.includes('بيانات غير كافية'))) {
+        return (
+          <div key={idx} className="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-xl my-4 shadow-sm">
+            <p className="text-amber-900 font-bold text-base leading-relaxed">{t}</p>
+          </div>
+        );
+      }
+
+      if (t.startsWith('# ')) {
+        return (
+          <h2 key={idx} className="text-xl md:text-2xl font-black text-slate-900 mb-5 bg-slate-100 p-4 rounded-xl border-r-4 border-indigo-600">
+            {t.replace('# ', '')}
+          </h2>
+        );
+      }
+
+      if (t.startsWith('## ') || t.startsWith('### ')) {
+        return (
+          <h3 key={idx} className="text-lg md:text-xl font-black text-indigo-950 mt-6 mb-3 border-b border-slate-200 pb-2 flex items-center gap-2">
+            <span className="text-indigo-600">◈</span> {t.replace(/^###?\s+/, '')}
+          </h3>
+        );
+      }
+
+      if (t.startsWith('- ')) {
+        return (
+          <li key={idx} className="mr-4 mb-2 text-slate-700 flex items-start gap-2 list-none">
+            <span className="text-indigo-500 mt-1 font-bold">•</span>
+            <span className="text-sm md:text-base leading-relaxed">{t.replace('- ', '')}</span>
+          </li>
+        );
+      }
+
+      return (
+        <p key={idx} className="text-slate-700 leading-relaxed mb-3 font-medium text-sm md:text-base">
+          {t}
+        </p>
+      );
+    });
+  };
+
+  const activeSymClean = (summary?.symbol || data?.symbol || symbol || '').replace('.CA', '').trim().toUpperCase();
   const isFav = activeSymClean && favorites.includes(activeSymClean);
 
   return (
     <div className="bg-slate-100 min-h-screen w-full overflow-x-hidden p-2.5 sm:p-4 md:p-6 rtl" dir="rtl">
       <div className="max-w-7xl mx-auto space-y-5">
-        {/* =====================================================================
-            1 & 2. رأس الصفحة، اختيار السهم، واختيار الإطار الزمني (بدون قسم الفرص المزدحم)
-           ===================================================================== */}
         <section className="bg-white p-4 sm:p-6 rounded-3xl shadow-xs border border-slate-200">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-5">
             <div>
@@ -371,7 +415,6 @@ function AnalysisContent() {
               </p>
             </div>
 
-            {/* اختيار الإطار الزمني */}
             <div className="w-full lg:w-auto flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
               {TIMEFRAMES.map((tf) => (
                 <button
@@ -395,7 +438,6 @@ function AnalysisContent() {
             </div>
           </div>
 
-          {/* شريط البحث عن السهم */}
           <div className="flex flex-col sm:flex-row gap-2.5">
             <div className="relative flex-1">
               <input
@@ -426,7 +468,6 @@ function AnalysisContent() {
             </button>
           </div>
 
-          {/* شريط الوصول السريع للأسهم المفضلة والقيادية */}
           <div className="mt-3.5 flex flex-wrap items-center gap-1.5 text-xs">
             <span className="text-slate-400 font-bold ml-1">اختيار سريع:</span>
             {(favorites.length > 0 ? favorites : QUICK_EGX_SYMBOLS).map((symItem) => (
@@ -449,7 +490,6 @@ function AnalysisContent() {
           </div>
         </section>
 
-        {/* رسالة الخطأ المفهومة عند فشل جلب البيانات */}
         {error && (
           <div className="bg-rose-50 border-r-4 border-rose-600 p-4 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-3">
@@ -466,7 +506,6 @@ function AnalysisContent() {
           </div>
         )}
 
-        {/* حالة التحميل الواضحة */}
         {loading && (
           <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xs text-center space-y-3">
             <div className="inline-block w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
@@ -479,15 +518,10 @@ function AnalysisContent() {
           </div>
         )}
 
-        {/* =====================================================================
-            عرض لوحة التحليل الاحترافية (Dashboard) عند توافر البيانات
-           ===================================================================== */}
         {!loading && summary && (
           <div className="space-y-5">
-            {/* 3. شريط رأس بيانات السهم وحالة البيانات (Stock Header Bar - المرحلة 2 - البند 1) */}
             <section className="bg-white p-4 sm:p-6 rounded-3xl border border-slate-200 shadow-xs">
               <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                {/* معلومات السهم والسوق */}
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="px-2.5 py-0.5 rounded-md bg-slate-900 text-white font-black text-xs">
@@ -512,7 +546,6 @@ function AnalysisContent() {
                   </p>
                 </div>
 
-                {/* السعر الحالي والتغير وأزرار الإجراءات */}
                 <div className="w-full lg:w-auto flex flex-wrap items-center justify-between lg:justify-end gap-4 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100">
                   <div className="text-right">
                     <span className="text-[11px] font-bold text-slate-400 block">السعر المرجعي للتحليل</span>
@@ -539,7 +572,6 @@ function AnalysisContent() {
                     </div>
                   </div>
 
-                  {/* أزرار التحديث وإضافة للمفضلة/المتابعة */}
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -576,11 +608,7 @@ function AnalysisContent() {
               )}
             </section>
 
-            {/* =====================================================================
-                4. بطاقات الملخص الرئيسية الـ 8 الموحدة (Summary KPI Cards - المرحلة 2 - البند 2)
-               ===================================================================== */}
             <section className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 sm:gap-3">
-              {/* 1. السعر الحالي */}
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between min-h-[96px]">
                 <span className="text-[11px] font-bold text-slate-400">السعر الحالي</span>
                 <div className="text-lg font-black text-slate-900 my-0.5" dir="ltr">
@@ -591,7 +619,6 @@ function AnalysisContent() {
                 </span>
               </div>
 
-              {/* 2. اتجاه السهم */}
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between min-h-[96px]">
                 <span className="text-[11px] font-bold text-slate-400">اتجاه السهم</span>
                 <div
@@ -610,7 +637,6 @@ function AnalysisContent() {
                 </span>
               </div>
 
-              {/* 3. مؤشر RSI */}
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between min-h-[96px]">
                 <span className="text-[11px] font-bold text-slate-400">مؤشر RSI (14)</span>
                 <div className="text-lg font-black text-slate-900 my-0.5" dir="ltr">
@@ -629,7 +655,6 @@ function AnalysisContent() {
                 </span>
               </div>
 
-              {/* 4. مؤشر MACD */}
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between min-h-[96px]">
                 <span className="text-[11px] font-bold text-slate-400">مؤشر MACD</span>
                 <div className="text-base font-black text-slate-900 my-0.5" dir="ltr">
@@ -649,7 +674,6 @@ function AnalysisContent() {
                 </span>
               </div>
 
-              {/* 5. التذبذب ATR */}
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between min-h-[96px]">
                 <span className="text-[11px] font-bold text-slate-400">التذبذب ATR (14)</span>
                 <div className="text-lg font-black text-slate-900 my-0.5" dir="ltr">
@@ -660,7 +684,6 @@ function AnalysisContent() {
                 </span>
               </div>
 
-              {/* 6. السيولة النسبية RVOL */}
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between min-h-[96px]">
                 <span className="text-[11px] font-bold text-slate-400">السيولة RVOL</span>
                 <div
@@ -682,7 +705,6 @@ function AnalysisContent() {
                 </span>
               </div>
 
-              {/* 7. أقرب دعم */}
               <div className="bg-white p-3.5 rounded-2xl border border-emerald-200/80 shadow-2xs flex flex-col justify-between min-h-[96px]">
                 <span className="text-[11px] font-bold text-emerald-700">أقرب دعم 🟢</span>
                 <div className="text-lg font-black text-emerald-800 my-0.5" dir="ltr">
@@ -693,7 +715,6 @@ function AnalysisContent() {
                 </span>
               </div>
 
-              {/* 8. أقرب مقاومة */}
               <div className="bg-white p-3.5 rounded-2xl border border-rose-200/80 shadow-2xs flex flex-col justify-between min-h-[96px]">
                 <span className="text-[11px] font-bold text-rose-700">أقرب مقاومة 🔴</span>
                 <div className="text-lg font-black text-rose-800 my-0.5" dir="ltr">
@@ -705,7 +726,6 @@ function AnalysisContent() {
               </div>
             </section>
 
-            {/* شريط الدرجات الكمية الـ 4 المستقلة */}
             <section className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
               {[
                 { label: '1. قوة الإشارات الفنية', val: scores.technical_quality_score, desc: 'الاتجاه، الهيكل، الزخم، والسيولة' },
@@ -725,9 +745,7 @@ function AnalysisContent() {
               ))}
             </section>
 
-            {/* =====================================================================
-                5. بطاقة القرار الكمي النهائي (Decision Card - المرحلة 4 - البند 3)
-               ===================================================================== */}
+            {/* بطاقة القرار الكمي النهائي مفصولة החالات بوضوح (المرحلة 4 - البند 3) */}
             {decision && (
               <section className={`p-5 sm:p-6 rounded-3xl border-2 shadow-sm ${getDecisionStyle(decision.decision_code).bg}`}>
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 pb-4 border-b border-white/15">
@@ -751,54 +769,40 @@ function AnalysisContent() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 mt-4 text-xs">
-                  {/* ما تحقق */}
                   <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5">
-                    <h4 className="font-black text-emerald-300 mb-2">✅ الشروط التي تحققت:</h4>
-                    <ul className="space-y-1.5 text-slate-100 leading-relaxed">
-                      {(decision.what_achieved || []).map((it: string, i: number) => (
-                        <li key={i}>• {it}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* ما لم يتحقق */}
-                  <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5">
-                    <h4 className="font-black text-amber-300 mb-2">⏳ الشروط التي لم تكتمل:</h4>
-                    <ul className="space-y-1.5 text-slate-100 leading-relaxed">
-                      {(decision.what_missing || []).length > 0 ? (
-                        decision.what_missing.map((it: string, i: number) => <li key={i}>• {it}</li>)
-                      ) : (
-                        <li>• جميع الشروط القياسية مكتملة.</li>
-                      )}
-                    </ul>
-                  </div>
-
-                  {/* الشرط المطلوب للانتقال للحالة التالية */}
-                  <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5">
-                    <h4 className="font-black text-sky-300 mb-2">🎯 الشرط المطلوب للانتقال للحالة التالية:</h4>
-                    <p className="text-slate-100 leading-relaxed font-medium">
-                      {decision.next_state_condition_ar || decision.confirmation_condition_ar}
+                    <h4 className="font-black text-sky-300 mb-2">🎯 حالة شرط الدخول:</h4>
+                    <p className="text-slate-100 font-medium leading-relaxed">
+                      {decision.state_separation?.entry_condition_status || decision.confirmation_condition_ar}
                     </p>
-                    <h4 className="font-black text-rose-300 mt-3 mb-1">🛑 شرط إبطال السيناريو:</h4>
-                    <p className="text-slate-200 leading-relaxed">{decision.invalidation_condition_ar}</p>
                   </div>
 
-                  {/* أهم المخاطر والتحذيرات */}
                   <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5">
-                    <h4 className="font-black text-amber-300 mb-2">⚠️ أهم المخاطر والتحذيرات:</h4>
-                    <ul className="space-y-1.5 text-slate-200 leading-relaxed">
-                      {(decision.key_risks_and_warnings || decision.contradicting_evidence || []).map((w: string, i: number) => (
-                        <li key={i}>• {w}</li>
-                      ))}
+                    <h4 className="font-black text-rose-300 mb-2">🛑 شرط إبطال السيناريو الفني:</h4>
+                    <p className="text-slate-100 font-medium leading-relaxed">
+                      {decision.state_separation?.scenario_invalidation_rule || decision.invalidation_condition_ar}
+                    </p>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5">
+                    <h4 className="font-black text-amber-300 mb-2">⚠️ وقف الخسارة وقواعد الخروج:</h4>
+                    <ul className="space-y-1.5 text-slate-200 leading-relaxed font-medium">
+                      <li>• {decision.state_separation?.post_entry_stop_loss || 'غير محدد'}</li>
+                      <li className="pt-1 mt-1 border-t border-white/10">
+                        • {decision.state_separation?.existing_position_exit_rule || 'غير محدد'}
+                      </li>
                     </ul>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5">
+                    <h4 className="font-black text-emerald-300 mb-2">✅ حالة الاستراتيجية (Validity):</h4>
+                    <p className="text-slate-200 leading-relaxed font-medium">
+                      {decision.state_separation?.strategy_validity_status || 'غير محددة'}
+                    </p>
                   </div>
                 </div>
               </section>
             )}
 
-            {/* =====================================================================
-                6. الرسم البياني التفاعلي الرئيسي (أكبر عنصر بصري - المرحلة 3)
-               ===================================================================== */}
             <section className="bg-white p-3.5 sm:p-5 rounded-3xl border border-slate-200 shadow-xs">
               <StockChart
                 symbol={activeSymClean}
@@ -807,9 +811,6 @@ function AnalysisContent() {
               />
             </section>
 
-            {/* =====================================================================
-                7. بطاقة «اتجاه السهم وهيكل السوق» (المرحلة 2 - البند 3)
-               ===================================================================== */}
             {structure && (
               <section className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3.5 mb-4">
@@ -817,7 +818,7 @@ function AnalysisContent() {
                     <span>🏛️</span> اتجاه السهم وهيكل السوق (Trend & Market Structure)
                   </h3>
                   <span className="text-xs font-bold text-slate-500">
-                    لا يُعتبر وجود السعر فوق EMA20 وحده دليلاً على اتجاه صاعد مؤكد دون هيكل قمم وقيعان أعلى
+                    استخراج القمم والقيعان المحورية المؤكدة يمنع الـ Look-ahead Bias
                   </span>
                 </div>
 
@@ -853,24 +854,20 @@ function AnalysisContent() {
                   </div>
 
                   <div className="p-3.5 rounded-2xl bg-rose-50/60 border border-rose-200">
-                    <span className="text-rose-700 font-bold block mb-1">مستوى إبطال الهيكل وتوافق الزخم</span>
+                    <span className="text-rose-700 font-bold block mb-1">مستوى إبطال الهيكل (Invalidation)</span>
                     <span className="text-sm font-black text-rose-900 block" dir="ltr">
                       {structure.invalidation_level ? `${structure.invalidation_level} ج.م` : 'غير محدد'}
                     </span>
                     <span className="text-[11px] text-slate-700 block mt-1">
-                      {structure.trend_momentum_alignment_ar}
+                      {structure.invalidation_reason_ar}
                     </span>
                   </div>
                 </div>
               </section>
             )}
 
-            {/* =====================================================================
-                8 & 9. مناطق الدعم والمقاومة + مستويات فيبوناتشي
-               ===================================================================== */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              {/* 8. الدعوم والمقاومات */}
-              <section className="lg:col-span-7 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs">
+              <section className="lg:col-span-7 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
                 <h3 className="text-base sm:text-lg font-black text-slate-900 mb-4 flex items-center gap-2">
                   <span>🧱</span> مناطق الدعم والمقاومة التاريخية المستقلة
                 </h3>
@@ -878,49 +875,49 @@ function AnalysisContent() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-right border-collapse text-xs">
                     <thead>
-                      <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                      <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 whitespace-nowrap">
                         <th className="p-2.5 font-black">المستوى</th>
-                        <th className="p-2.5 font-black">النطاق السعري (ج.م)</th>
+                        <th className="p-2.5 font-black">النطاق السعري</th>
                         <th className="p-2.5 font-black">القوة</th>
                         <th className="p-2.5 font-black">الاختبارات المستقلة</th>
-                        <th className="p-2.5 font-black">الحالة الحالية</th>
+                        <th className="p-2.5 font-black">موقع السعر / الحالة</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {sZones.map((z: any, i: number) => (
                         <tr key={`s-${i}`} className="bg-emerald-50/30">
-                          <td className="p-2.5 font-black text-emerald-800">🟢 دعم S{i + 1}</td>
-                          <td className="p-2.5 font-black text-slate-900" dir="ltr">
+                          <td className="p-2.5 font-black text-emerald-800 whitespace-nowrap">🟢 دعم S{i + 1}</td>
+                          <td className="p-2.5 font-black text-slate-900 whitespace-nowrap" dir="ltr">
                             {z.low} - {z.high}
                           </td>
-                          <td className="p-2.5 font-black text-emerald-700" dir="ltr">
+                          <td className="p-2.5 font-black text-emerald-700 whitespace-nowrap" dir="ltr">
                             {z.strength_score}/100
                           </td>
-                          <td className="p-2.5 text-slate-700">
-                            {z.tests_count} اختبارات ({z.successful_bounces} ارتدادات)
+                          <td className="p-2.5 text-slate-700 whitespace-nowrap">
+                            {z.tests_count} اختبار ({z.successful_bounces} ارتداد)
                           </td>
-                          <td className="p-2.5 font-bold text-slate-700">{z.status_ar}</td>
+                          <td className="p-2.5 font-bold text-slate-700 min-w-[200px]">{z.distance_label_ar}</td>
                         </tr>
                       ))}
                       {rZones.map((z: any, i: number) => (
                         <tr key={`r-${i}`} className="bg-rose-50/30">
-                          <td className="p-2.5 font-black text-rose-800">🔴 مقاومة R{i + 1}</td>
-                          <td className="p-2.5 font-black text-slate-900" dir="ltr">
+                          <td className="p-2.5 font-black text-rose-800 whitespace-nowrap">🔴 مقاومة R{i + 1}</td>
+                          <td className="p-2.5 font-black text-slate-900 whitespace-nowrap" dir="ltr">
                             {z.low} - {z.high}
                           </td>
-                          <td className="p-2.5 font-black text-rose-700" dir="ltr">
+                          <td className="p-2.5 font-black text-rose-700 whitespace-nowrap" dir="ltr">
                             {z.strength_score}/100
                           </td>
-                          <td className="p-2.5 text-slate-700">
-                            {z.tests_count} اختبارات ({z.successful_bounces} رفض سعري)
+                          <td className="p-2.5 text-slate-700 whitespace-nowrap">
+                            {z.tests_count} اختبار ({z.successful_bounces} رفض)
                           </td>
-                          <td className="p-2.5 font-bold text-slate-700">{z.status_ar}</td>
+                          <td className="p-2.5 font-bold text-slate-700 min-w-[200px]">{z.distance_label_ar}</td>
                         </tr>
                       ))}
                       {sZones.length === 0 && rZones.length === 0 && (
                         <tr>
                           <td colSpan={5} className="p-4 text-center text-slate-400 font-bold">
-                            لا تتوفر مناطق دعم أو مقاومة مختبرة قريبة على هذا الإطار الزمني.
+                            لا تتوفر مناطق دعم أو مقاومة تاريخية قريبة ومختبرة بشكل مستقل على هذا الإطار.
                           </td>
                         </tr>
                       )}
@@ -929,10 +926,9 @@ function AnalysisContent() {
                 </div>
               </section>
 
-              {/* 9. فيبوناتشي */}
               <section className="lg:col-span-5 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs">
                 <h3 className="text-base sm:text-lg font-black text-slate-900 mb-3 flex items-center gap-2">
-                  <span>🌀</span> مستويات فيبوناتشي والتوافق السعري
+                  <span>🌀</span> مستويات فيبوناتشي (Fibonacci)
                 </h3>
 
                 {fib && fib.is_valid ? (
@@ -948,7 +944,7 @@ function AnalysisContent() {
                         </span>
                       </div>
                       {fib.wave_selection_reason_ar && (
-                        <p className="text-[11px] text-slate-500 pt-1">{fib.wave_selection_reason_ar}</p>
+                        <p className="text-[10px] text-slate-500 pt-1 leading-relaxed">{fib.wave_selection_reason_ar}</p>
                       )}
                     </div>
 
@@ -999,11 +995,7 @@ function AnalysisContent() {
               </section>
             </div>
 
-            {/* =====================================================================
-                10 & 11. المؤشرات الفنية والسيولة + خطة التداول وإدارة المخاطر
-               ===================================================================== */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              {/* 10. المؤشرات الفنية والسيولة */}
               {indAnalysis && (
                 <section className="lg:col-span-7 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
                   <h3 className="text-base sm:text-lg font-black text-slate-900 border-b border-slate-100 pb-3 flex items-center gap-2">
@@ -1020,7 +1012,7 @@ function AnalysisContent() {
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-500 block mt-1">
-                          {maObj.price_relation} • الميل: {maObj.slope_ar}
+                          {maObj.price_relation} • {maObj.slope_ar}
                         </span>
                       </div>
                     ))}
@@ -1039,14 +1031,13 @@ function AnalysisContent() {
                 </section>
               )}
 
-              {/* 11. شروط الدخول والخروج وإدارة المخاطر (المرحلة 5 - البند 9) */}
               <section className="lg:col-span-5 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between">
                 <div>
                   <h3 className="text-base sm:text-lg font-black text-slate-900 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
                     <span>📐</span> خطة التداول وإدارة المخاطر
                   </h3>
 
-                  {tradeSetup && tradeSetup.plan_valid && tradeSetup.entry && tradeSetup.stop && tradeSetup.tp1 ? (
+                  {tradeSetup && tradeSetup.plan_valid ? (
                     <div className="space-y-3 text-xs">
                       <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3 text-center">
                         <span className="text-[11px] text-indigo-600 font-bold block">الاستراتيجية المعتمدة</span>
@@ -1091,13 +1082,13 @@ function AnalysisContent() {
                       <div className="flex justify-between items-center p-3 rounded-xl bg-purple-50 border border-purple-200">
                         <span className="font-bold text-purple-800">العائد المتوقع مقابل المخاطرة (R:R)</span>
                         <span className="text-sm font-black text-purple-900" dir="ltr">
-                          {tradeSetup.risk_reward_display || `1 : ${tradeSetup.risk_reward}`}
+                          {tradeSetup.risk_reward_display}
                         </span>
                       </div>
 
                       <div className="text-[11px] text-slate-600 space-y-1 pt-1">
-                        <div>🛑 <strong>شرط إلغاء الصفقة:</strong> {tradeSetup.invalidation}</div>
-                        <div>💳 <strong>الرسوم والانزلاق السعري:</strong> مُدمج بنسبة 0.45% ذهاباً وإياباً.</div>
+                        <div>⏱️ <strong>مدة الاحتفاظ المتوقعة:</strong> {tradeSetup.expected_holding_days}</div>
+                        <div>🛑 <strong>شرط الإبطال:</strong> {tradeSetup.invalidation}</div>
                       </div>
                     </div>
                   ) : (
@@ -1111,8 +1102,8 @@ function AnalysisContent() {
                           N/A (غير متاحة)
                         </span>
                       </div>
-                      <p className="text-[11px] text-amber-900">
-                        <strong>الشرط المطلوب لتفعيل خطة جديدة:</strong> {decision?.next_state_condition_ar || decision?.confirmation_condition_ar}
+                      <p className="text-[11px] text-amber-900 font-medium">
+                        <strong>الشرط المطلوب لتفعيل الخطة:</strong> {decision?.next_state_condition_ar || decision?.confirmation_condition_ar}
                       </p>
                     </div>
                   )}
@@ -1121,13 +1112,13 @@ function AnalysisContent() {
             </div>
 
             {/* =====================================================================
-                12. نتائج الاختبار التاريخي (Historical Backtest)
+                12. نتائج الاختبار التاريخي (يعرض N/A عند 0 صفقات)
                ===================================================================== */}
             <section className="bg-slate-900 text-white p-5 sm:p-6 rounded-3xl border border-slate-800 shadow-sm">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
                 <div>
                   <h3 className="text-sm sm:text-base font-black text-amber-400 flex items-center gap-2">
-                    <span>🧪</span> نتائج الاختبار التاريخي للاستراتيجية (Walk-Forward Out-of-Sample Backtest)
+                    <span>🧪</span> نتائج الاختبار التاريخي (Walk-Forward Out-of-Sample Backtest)
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
                     الفترة المختبرة: {btMetrics.tested_period || 'البيانات المتاحة'} • شامل 0.45% عمولات وانزلاق سعري
@@ -1136,12 +1127,12 @@ function AnalysisContent() {
                 {loadingBacktest ? (
                   <span className="text-xs text-slate-300 animate-pulse">جاري التحديث...</span>
                 ) : btMetrics.sample_warning || btMetrics.warning_message ? (
-                  <span className="bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold px-3 py-1 rounded-xl">
+                  <span className="bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold px-3 py-1 rounded-xl max-w-sm text-center">
                     ⚠️ {btMetrics.sample_warning || btMetrics.warning_message}
                   </span>
                 ) : (
                   <span className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold px-3 py-1 rounded-xl">
-                    ✓ عينة تاريخية كافية ({btMetrics.trades_count ?? btMetrics.total_trades ?? 0} صفقة)
+                    ✓ عينة تاريخية كافية وداعمة
                   </span>
                 )}
               </div>
@@ -1155,54 +1146,52 @@ function AnalysisContent() {
                 </div>
                 <div className="bg-slate-800/90 p-3 rounded-2xl border border-slate-700">
                   <span className="text-[11px] text-slate-400 block">معدل الفوز (Win Rate)</span>
-                  <span className="text-lg font-black text-emerald-400" dir="ltr">
-                    {btMetrics.win_rate_pct ?? btMetrics.win_rate ?? 0}%
+                  <span className={`text-lg font-black ${btMetrics.trades_count > 0 ? 'text-emerald-400' : 'text-slate-500'}`} dir="ltr">
+                    {btMetrics.win_rate_display ?? (btMetrics.win_rate_pct !== undefined ? `${btMetrics.win_rate_pct}%` : 'N/A')}
                   </span>
                 </div>
                 <div className="bg-slate-800/90 p-3 rounded-2xl border border-slate-700">
                   <span className="text-[11px] text-slate-400 block">معامل الربح (Profit Factor)</span>
                   <span
                     className={`text-lg font-black ${
-                      Number(btMetrics.profit_factor) >= 1.15 ? 'text-sky-400' : 'text-rose-400'
+                      btMetrics.trades_count === 0 ? 'text-slate-500' : Number(btMetrics.profit_factor) >= 1.15 ? 'text-sky-400' : 'text-rose-400'
                     }`}
                     dir="ltr"
                   >
-                    {btMetrics.profit_factor ?? 0}
+                    {btMetrics.profit_factor_display ?? btMetrics.profit_factor ?? 'N/A'}
                   </span>
                 </div>
                 <div className="bg-slate-800/90 p-3 rounded-2xl border border-slate-700">
                   <span className="text-[11px] text-slate-400 block">التوقع الرياضي (Expectancy)</span>
                   <span
                     className={`text-lg font-black ${
-                      Number(btMetrics.expectancy_r) > 0 ? 'text-emerald-400' : 'text-rose-400'
+                      btMetrics.trades_count === 0 ? 'text-slate-500' : Number(btMetrics.expectancy_r) > 0 ? 'text-emerald-400' : 'text-rose-400'
                     }`}
                     dir="ltr"
                   >
-                    {btMetrics.expectancy_r ?? 0} R
+                    {btMetrics.expectancy_display ?? (btMetrics.expectancy_r !== undefined ? `${btMetrics.expectancy_r} R` : 'N/A')}
                   </span>
                 </div>
                 <div className="bg-slate-800/90 p-3 rounded-2xl border border-slate-700">
                   <span className="text-[11px] text-slate-400 block">أقصى تراجع (Max DD)</span>
-                  <span className="text-lg font-black text-rose-400" dir="ltr">
-                    {btMetrics.max_drawdown_pct ?? 0}%
+                  <span className={`text-lg font-black ${btMetrics.trades_count > 0 ? 'text-rose-400' : 'text-slate-500'}`} dir="ltr">
+                    {btMetrics.max_drawdown_display ?? (btMetrics.max_drawdown_pct !== undefined ? `${btMetrics.max_drawdown_pct}%` : 'N/A')}
                   </span>
                 </div>
                 <div className="bg-slate-800/90 p-3 rounded-2xl border border-slate-700">
                   <span className="text-[11px] text-slate-400 block">فوز خارج العينة (OOS)</span>
-                  <span className="text-lg font-black text-indigo-300" dir="ltr">
-                    {btMetrics.oos_win_rate ?? btMetrics.out_of_sample_win_rate_pct ?? 0}% (
-                    {btMetrics.oos_trades ?? btMetrics.out_of_sample_trades ?? 0})
+                  <span className={`text-lg font-black ${btMetrics.trades_count > 0 ? 'text-indigo-300' : 'text-slate-500'}`} dir="ltr">
+                    {btMetrics.oos_display ?? (btMetrics.oos_win_rate !== undefined ? `${btMetrics.oos_win_rate}%` : 'N/A')}
                   </span>
                 </div>
               </div>
             </section>
 
             {/* =====================================================================
-                13. التقرير الفني الاحترافي الكامل (11 قسماً مترابطاً - المرحلتان 5 و 6)
+                13. التقرير الفني الاحترافي الكامل الموثق
                ===================================================================== */}
             {profReport && (
               <section id="professional-report-container" className="bg-white p-5 sm:p-8 rounded-3xl border border-slate-200 shadow-xs space-y-6">
-                {/* رأس التقرير وأزرار التحكم الوظيفية */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b-2 border-slate-100 pb-5">
                   <div>
                     <span className="text-xs font-black bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full">
@@ -1220,7 +1209,6 @@ function AnalysisContent() {
                     </div>
                   </div>
 
-                  {/* أزرار التقرير: عرض الكل / طي، نسخ، طباعة / PDF */}
                   <div className="flex flex-wrap items-center gap-2 print:hidden">
                     <button
                       type="button"
@@ -1230,62 +1218,58 @@ function AnalysisContent() {
                       }}
                       className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black transition cursor-pointer"
                     >
-                      {Object.values(expandedReportSections).every(Boolean) ? '🔼 طي الأقسام الفرعية' : '🔽 عرض التقرير الكامل'}
+                      {Object.values(expandedReportSections).every(Boolean) ? '🔼 طي الأقسام' : '🔽 عرض الكل'}
                     </button>
                     <button
                       type="button"
                       onClick={handleCopyReport}
                       className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-black transition cursor-pointer"
                     >
-                      {copySuccess ? '✅ تم نسخ التقرير' : '📋 نسخ التقرير'}
+                      {copySuccess ? '✅ تم النسخ' : '📋 نسخ التقرير'}
                     </button>
                     <button
                       type="button"
                       onClick={handlePrintReport}
                       className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black transition cursor-pointer"
                     >
-                      🖨️ طباعة / تصدير PDF
+                      🖨️ طباعة
                     </button>
                   </div>
                 </div>
 
-                {/* القسم 2: الملخص التنفيذي (ظاهر دائماً كما نصت المرحلة السادسة) */}
                 <div className="bg-indigo-950 text-white p-5 rounded-2xl border border-indigo-800 shadow-xs">
                   <h3 className="text-sm sm:text-base font-black text-amber-400 mb-2 flex items-center gap-2">
-                    <span>📌</span> الملخص التنفيذي (Executive Summary)
+                    <span>📌</span> 1. الملخص التنفيذي (Executive Summary)
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-100 leading-relaxed font-medium">
                     {profReport.executive_summary}
                   </p>
                 </div>
 
-                {/* الأقسام القابلة للطي والفتح */}
                 <div className="space-y-3">
-                  {/* القسم 3: تحليل الاتجاه وهيكل السوق */}
                   <div className="border border-slate-200 rounded-2xl overflow-hidden">
                     <button
                       type="button"
                       onClick={() => toggleReportSection('trend')}
                       className="w-full p-4 bg-slate-50 hover:bg-slate-100 flex justify-between items-center text-right font-black text-sm text-slate-900 cursor-pointer"
                     >
-                      <span>1. تحليل الاتجاه وهيكل السوق (Trend & Market Structure)</span>
+                      <span>2. تحليل الاتجاه وهيكل السوق</span>
                       <span>{expandedReportSections.trend ? '−' : '+'}</span>
                     </button>
                     {expandedReportSections.trend && (
-                      <div className="p-4 text-xs sm:text-sm text-slate-700 leading-relaxed space-y-2">
+                      <div className="p-4 text-xs sm:text-sm text-slate-700 leading-relaxed">
                         <p>{profReport.trend_and_structure?.narrative_ar}</p>
                       </div>
                     )}
                   </div>
 
-                  {/* القسم 4: تحليل الزخم */}
                   <div className="border border-slate-200 rounded-2xl overflow-hidden">
                     <button
                       type="button"
                       onClick={() => toggleReportSection('momentum')}
                       className="w-full p-4 bg-slate-50 hover:bg-slate-100 flex justify-between items-center text-right font-black text-sm text-slate-900 cursor-pointer"
                     >
-                      <span>2. تحليل الزخم والمؤشرات الفنية (Momentum & Moving Averages)</span>
+                      <span>3. تحليل الزخم والمؤشرات الفنية</span>
                       <span>{expandedReportSections.momentum ? '−' : '+'}</span>
                     </button>
                     {expandedReportSections.momentum && (
@@ -1295,14 +1279,13 @@ function AnalysisContent() {
                     )}
                   </div>
 
-                  {/* القسم 5: تحليل السيولة */}
                   <div className="border border-slate-200 rounded-2xl overflow-hidden">
                     <button
                       type="button"
                       onClick={() => toggleReportSection('liquidity')}
                       className="w-full p-4 bg-slate-50 hover:bg-slate-100 flex justify-between items-center text-right font-black text-sm text-slate-900 cursor-pointer"
                     >
-                      <span>3. تحليل السيولة وتدفق الأموال (Volume & Money Flow)</span>
+                      <span>4. تحليل السيولة وتدفق الأموال</span>
                       <span>{expandedReportSections.liquidity ? '−' : '+'}</span>
                     </button>
                     {expandedReportSections.liquidity && (
@@ -1312,14 +1295,13 @@ function AnalysisContent() {
                     )}
                   </div>
 
-                  {/* القسم 6: تفاصيل الدعوم والمقاومات */}
                   <div className="border border-slate-200 rounded-2xl overflow-hidden">
                     <button
                       type="button"
                       onClick={() => toggleReportSection('sr')}
                       className="w-full p-4 bg-slate-50 hover:bg-slate-100 flex justify-between items-center text-right font-black text-sm text-slate-900 cursor-pointer"
                     >
-                      <span>4. تقييم مناطق الدعم والمقاومة</span>
+                      <span>5. تقييم مناطق الدعم والمقاومة</span>
                       <span>{expandedReportSections.sr ? '−' : '+'}</span>
                     </button>
                     {expandedReportSections.sr && (
@@ -1341,39 +1323,33 @@ function AnalysisContent() {
                     )}
                   </div>
 
-                  {/* القسم 8: السيناريوهات الثلاثة المشروطة */}
                   <div className="border border-slate-200 rounded-2xl overflow-hidden">
                     <button
                       type="button"
                       onClick={() => toggleReportSection('scenarios')}
                       className="w-full p-4 bg-slate-50 hover:bg-slate-100 flex justify-between items-center text-right font-black text-sm text-slate-900 cursor-pointer"
                     >
-                      <span>5. سيناريوهات الحركة المحتملة (مشروطة غير يقينية)</span>
+                      <span>6. سيناريوهات الحركة المحتملة (مشروطة غير يقينية)</span>
                       <span>{expandedReportSections.scenarios ? '−' : '+'}</span>
                     </button>
                     {expandedReportSections.scenarios && profReport.scenarios_section && (
                       <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                        {/* الإيجابي */}
                         <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1.5">
-                          <h4 className="font-black text-emerald-900">🟢 {profReport.scenarios_section.bullish?.title}</h4>
+                          <h4 className="font-black text-emerald-900">🟢 {profReport.scenarios_section.bullish?.title} ({profReport.scenarios_section.bullish?.status_ar})</h4>
                           <p><strong>الشرط السعري:</strong> {profReport.scenarios_section.bullish?.price_condition}</p>
                           <p><strong>شرط السيولة:</strong> {profReport.scenarios_section.bullish?.volume_momentum_condition}</p>
                           <p><strong>المستويات التالية:</strong> {profReport.scenarios_section.bullish?.next_potential_levels}</p>
                           <p className="text-rose-700"><strong>الإلغاء:</strong> {profReport.scenarios_section.bullish?.invalidation}</p>
                         </div>
-
-                        {/* السلبي */}
                         <div className="p-3.5 rounded-2xl bg-rose-50/70 border border-rose-200 space-y-1.5">
-                          <h4 className="font-black text-rose-900">🔴 {profReport.scenarios_section.bearish?.title}</h4>
+                          <h4 className="font-black text-rose-900">🔴 {profReport.scenarios_section.bearish?.title} ({profReport.scenarios_section.bearish?.status_ar})</h4>
                           <p><strong>مستوى الكسر:</strong> {profReport.scenarios_section.bearish?.break_level}</p>
                           <p><strong>حالة الكسر:</strong> {profReport.scenarios_section.bearish?.break_status}</p>
-                          <p><strong>مناطق المراقبة التالية:</strong> {profReport.scenarios_section.bearish?.next_watch_areas}</p>
+                          <p><strong>مناطق المراقبة:</strong> {profReport.scenarios_section.bearish?.next_watch_areas}</p>
                           <p className="text-emerald-800"><strong>الإلغاء:</strong> {profReport.scenarios_section.bearish?.invalidation}</p>
                         </div>
-
-                        {/* العرضي */}
                         <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-1.5">
-                          <h4 className="font-black text-amber-900">🟡 {profReport.scenarios_section.sideways?.title}</h4>
+                          <h4 className="font-black text-amber-900">🟡 {profReport.scenarios_section.sideways?.title} ({profReport.scenarios_section.sideways?.status_ar})</h4>
                           <p><strong>حدود النطاق:</strong> {profReport.scenarios_section.sideways?.range_bounds}</p>
                           <p><strong>السلوك المتوقع:</strong> {profReport.scenarios_section.sideways?.expected_behavior}</p>
                           <p><strong>شرط انتهاء النطاق:</strong> {profReport.scenarios_section.sideways?.end_of_range_condition}</p>
@@ -1382,14 +1358,13 @@ function AnalysisContent() {
                     )}
                   </div>
 
-                  {/* القسم 10 و 11: تقييم جودة الأدلة والخلاصة المهنية */}
                   <div className="border border-slate-200 rounded-2xl overflow-hidden">
                     <button
                       type="button"
                       onClick={() => toggleReportSection('conclusion')}
                       className="w-full p-4 bg-slate-50 hover:bg-slate-100 flex justify-between items-center text-right font-black text-sm text-slate-900 cursor-pointer"
                     >
-                      <span>6. تقييم جودة الأدلة والخلاصة المهنية</span>
+                      <span>7. تقييم جودة الأدلة والخلاصة المهنية</span>
                       <span>{expandedReportSections.conclusion ? '−' : '+'}</span>
                     </button>
                     {expandedReportSections.conclusion && (
@@ -1408,7 +1383,7 @@ function AnalysisContent() {
             )}
 
             {/* =====================================================================
-                14. التفسير التعليمي التفاعلي (في قسم قابل للطي - المرحلة 4 - البند 2)
+                14. التفسير التعليمي التفاعلي
                ===================================================================== */}
             {eduPanel && (
               <section className="bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-900 text-white rounded-3xl border border-indigo-800/50 shadow-sm overflow-hidden print:hidden">
@@ -1468,7 +1443,6 @@ function AnalysisContent() {
                       </div>
                     )}
 
-                    {/* بطاقات المؤشرات */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                       {(eduPanel.indicator_cards || []).map((card: any) => {
                         const isSelected = selectedIndicatorId === card.id;
@@ -1504,7 +1478,6 @@ function AnalysisContent() {
                       })}
                     </div>
 
-                    {/* سلسلة لماذا صدر القرار؟ */}
                     <div>
                       <h3 className="text-sm font-black text-amber-400 mb-3">🔗 سلسلة «لماذا صدر القرار؟»</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">

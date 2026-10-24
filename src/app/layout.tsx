@@ -84,7 +84,6 @@ export default function RootLayout({
           {/* تذييل القائمة الجانبية */}
           <div className="p-4 border-t border-gray-100 text-center text-xs text-gray-400">
             EGX Pro Analyzer © 2026
-           تطوير: محمد فتحي
           </div>
         </aside>
 
