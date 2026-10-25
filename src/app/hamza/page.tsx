@@ -25,6 +25,8 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  intent?: string;
+  isFullReport?: boolean;
   engineMode?: string;
   symbol?: string | null;
   comparedSymbols?: string[];
@@ -46,12 +48,12 @@ const TIMEFRAMES = [
 ];
 
 const DEFAULT_SUGGESTIONS = [
-  'حلل سهم فوري FWRY',
-  'هل الدخول في مدينة مصر MASR مناسب حالياً؟',
-  'قارن بين فوري وإيديتا من الناحية الفنية',
-  'ما أقرب مستويات الدعم والمقاومة لسهم التجاري الدولي COMI؟',
-  'هل توجد سيولة تدعم الصعود في السويدي SWDY؟',
-  'ما الشروط التي أنتظرها قبل الدخول؟'
+  'هل توجد سيولة تدعم الصعود في مدينة مصر؟',
+  'اشتريت مدينة مصر بسعر 6.8، أخرج ولا أستنى؟',
+  'ما أقرب مستويات الدعم والمقاومة لسهم فوري؟',
+  'يعني إيه RVOL؟',
+  'قارن لي مدينة مصر وفوري من حيث السيولة والاتجاه',
+  'حلل سهم التجاري الدولي COMI'
 ];
 
 export default function HamzaAIPage() {
@@ -63,8 +65,10 @@ export default function HamzaAIPage() {
   const [activeSymbol, setActiveSymbol] = useState<string | null>(null);
   const [comparedSymbols, setComparedSymbols] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS);
+  const [expandedSnapshots, setExpandedSnapshots] = useState<Record<string, boolean>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const getBaseUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) {
@@ -84,13 +88,14 @@ export default function HamzaAIPage() {
         id: 'welcome_msg',
         role: 'assistant',
         content:
-          'مرحباً بك في **حمزة | Hamza AI**، المساعد الكمي المتخصص في البورصة المصرية (EGX).\n\n' +
-          'أقوم بتحليل الأسهم مباشرة عبر **محرك التحليل الكمي الفعلي** وبيانات السوق التاريخية الموثقة.\n' +
-          '- اكتب اسم أي سهم بالعربية أو رمزه (مثل: **حلل فوري** أو **COMI**).\n' +
-          '- اسأل عن **شروط الدخول، الدعم والمقاومة، السيولة، أو إبطال السيناريو**.\n' +
-          '- اطلب **مقارنة سهمين** (مثل: **قارن بين فوري وإيديتا**).\n' +
-          '- قيّم صفقتك الحالية (مثل: **اشتريت فوري بسعر 18.20، هل ما زال السيناريو قائماً؟**).',
+          'أهلاً بك! أنا **حمزة | Hamza AI**، مساعدك الحواري والكمي في البورصة المصرية (EGX).\n\n' +
+          'أجيب عن أسئلتك مباشرة وبأسلوب حواري بالاعتماد على **محرك التحليل الكمي الفعلي** دون إغراقك بتقارير مكررة:\n' +
+          '- اسأل مباشرة عن السيولة: **«هل توجد سيولة تدعم الصعود في مدينة مصر؟»**\n' +
+          '- راجع مركزك القائم: **«اشتريت مدينة مصر بسعر 6.8، أخرج ولا أستنى؟»**\n' +
+          '- اسأل عن المستويات فقط: **«ما أقرب مستويات الدعم والمقاومة لسهم فوري؟»**\n' +
+          '- اطلب شرح أي مؤشر أو مقارنة سهمين أو تقريراً كمياً كاملاً عند الحاجة.',
         engineMode: 'QUANT_ENGINE_DIRECT',
+        isFullReport: false,
         timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
       }
     ]);
@@ -111,7 +116,7 @@ export default function HamzaAIPage() {
         }
       }
     } catch {
-      // الاحتفاظ بالاقتراحات الافتراضية في حال عدم توفر الاتصال
+      // الاحتفاظ بالاقتراحات الافتراضية
     }
   };
 
@@ -120,19 +125,21 @@ export default function HamzaAIPage() {
     try {
       await fetch(`${getBaseUrl()}/api/hamza/session/${sessionId}`, { method: 'DELETE' });
     } catch {
-      // ignore network error on reset
+      // ignore network error
     }
     const newSessionId = `hamza_session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     setSessionId(newSessionId);
     setActiveSymbol(null);
     setComparedSymbols([]);
+    setExpandedSnapshots({});
     setSuggestions(DEFAULT_SUGGESTIONS);
     setMessages([
       {
         id: `welcome_${Date.now()}`,
         role: 'assistant',
-        content: 'تم بدء جلسة محادثة جديدة ومسح السياق السابق. اكتب اسم السهم أو سؤالك للبدء فوراً.',
+        content: 'تم بدء محادثة جديدة ومسح السياق السابق. كيف يمكنني مساعدتك الآن؟',
         engineMode: 'QUANT_ENGINE_DIRECT',
+        isFullReport: false,
         timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
       }
     ]);
@@ -179,7 +186,7 @@ export default function HamzaAIPage() {
 
       const data = await res.json();
 
-      if (data.active_symbol) {
+      if (data.active_symbol !== undefined) {
         setActiveSymbol(data.active_symbol);
       }
       if (Array.isArray(data.compared_symbols)) {
@@ -192,12 +199,20 @@ export default function HamzaAIPage() {
         setSuggestions(data.suggested_questions);
       }
 
+      const msgId = `ast_${Date.now()}`;
+      const isFull = Boolean(data.is_full_report);
+      if (isFull) {
+        setExpandedSnapshots((prev) => ({ ...prev, [msgId]: true }));
+      }
+
       setMessages((prev) => [
         ...prev,
         {
-          id: `ast_${Date.now()}`,
+          id: msgId,
           role: 'assistant',
           content: data.reply || 'لم يتم استلام رد من الخادم.',
+          intent: data.intent,
+          isFullReport: isFull,
           engineMode:
             data.engine_mode ||
             (data.status === 'clarification_needed' ? 'SYSTEM_CLARIFICATION' : 'QUANT_ENGINE_VERIFIED'),
@@ -222,11 +237,35 @@ export default function HamzaAIPage() {
             `⚠️ **تعذر إتمام الطلب حالياً:** ${error.message || 'فشل الاتصال بالخادم.'}\n` +
             '- يلتزم حمزة بعدم عرض أي أسعار أو تحليلات مخمنة عند انقطاع الاتصال بمصدر البيانات.',
           engineMode: 'SYSTEM_ERROR',
+          isFullReport: false,
           timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
         }
       ]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleQuickAction = (actionType: string) => {
+    const sym = activeSymbol || 'فوري';
+    if (actionType === 'ANALYZE') {
+      handleSendMessage(activeSymbol ? `حلل سهم ${activeSymbol}` : 'حلل سهم فوري');
+    } else if (actionType === 'POSITION') {
+      if (activeSymbol) {
+        setInputValue(`اشتريت ${activeSymbol} بسعر ، أخرج ولا أستنى؟`);
+      } else {
+        setInputValue('اشتريت مدينة مصر بسعر 6.8، أخرج ولا أستنى؟');
+      }
+      inputRef.current?.focus();
+    } else if (actionType === 'LIQUIDITY') {
+      handleSendMessage(`هل توجد سيولة تدعم الصعود في ${sym}؟`);
+    } else if (actionType === 'SR') {
+      handleSendMessage(`ما أقرب مستويات الدعم والمقاومة لسهم ${sym}؟`);
+    } else if (actionType === 'EXPLAIN') {
+      handleSendMessage('يعني إيه RVOL؟');
+    } else if (actionType === 'COMPARE') {
+      const otherSym = activeSymbol === 'FWRY' ? 'إيديتا' : 'فوري';
+      handleSendMessage(`قارن لي ${sym} و ${otherSym} من حيث السيولة والاتجاه الفني`);
     }
   };
 
@@ -318,21 +357,21 @@ export default function HamzaAIPage() {
     if (mode === 'AI_WITH_QUANT_ENGINE') {
       return (
         <span className="bg-purple-50 text-purple-800 border border-purple-200 text-[10px] px-2 py-0.5 rounded-full font-black">
-          🧠 تفسير الذكاء الاصطناعي + المحرك الكمي
+          🧠 حوار ذكي مدعوم بالمحرك الكمي
         </span>
       );
     }
     if (mode === 'QUANT_ENGINE_FALLBACK_ON_AI_ERROR') {
       return (
         <span className="bg-amber-50 text-amber-900 border border-amber-200 text-[10px] px-2 py-0.5 rounded-full font-black">
-          ⚡ التقرير الكمي الموثق (وضع الطوارئ)
+          ⚡ الرد الكمي الموثق
         </span>
       );
     }
     if (mode === 'SYSTEM_CLARIFICATION') {
       return (
         <span className="bg-sky-50 text-sky-800 border border-sky-200 text-[10px] px-2 py-0.5 rounded-full font-black">
-          🔎 توضيح اسم السهم
+          🔎 توضيح المقصود
         </span>
       );
     }
@@ -355,11 +394,11 @@ export default function HamzaAIPage() {
                     Hamza AI | حمزة
                   </h1>
                   <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] px-2 py-0.5 rounded-full font-black">
-                    متصل بغرفة التحليل الكمي
+                    مساعد حواري وكمي
                   </span>
                 </div>
                 <p className="text-indigo-200 text-[11px] sm:text-xs font-medium mt-0.5 truncate">
-                  تحليل تفاعلي فوري لأسهم البورصة المصرية بالبيانات الفعلية
+                  يفهم سؤالك ويجيب مباشرة بأدلة محرك EGX Pro دون تكرار آلي للتقارير
                 </p>
               </div>
             </div>
@@ -398,7 +437,7 @@ export default function HamzaAIPage() {
                   onClick={() => {
                     setSelectedTimeframe(tf.id);
                     if (activeSymbol && !isLoading) {
-                      handleSendMessage(`حلل سهم ${activeSymbol} على الإطار ${tf.label}`, false, tf.id);
+                      handleSendMessage(`ما وضع سهم ${activeSymbol} على الإطار ${tf.label}؟`, false, tf.id);
                     }
                   }}
                   className={`px-2.5 py-1 rounded-lg font-black text-[11px] transition cursor-pointer ${
@@ -428,7 +467,7 @@ export default function HamzaAIPage() {
                 </div>
               ) : (
                 <span className="text-[11px] text-slate-400">
-                  لا يوجد سهم محدد في السياق — اكتب اسم أي سهم للبدء
+                  اسأل بحرية أو اختر سهماً لبدء النقاش
                 </span>
               )}
             </div>
@@ -437,94 +476,127 @@ export default function HamzaAIPage() {
 
         {/* 2. مساحة عرض الرسائل */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 bg-slate-50">
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}>
-              {/* رسائل المساعد حمزة */}
-              {msg.role === 'assistant' && (
-                <div className="flex items-start gap-2 sm:gap-3 w-full max-w-full sm:max-w-[94%]">
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-xl bg-indigo-950 text-white flex items-center justify-center text-xs sm:text-sm shadow-xs mt-1">
-                    🦅
-                  </div>
-                  <div className="flex flex-col gap-1.5 min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5 px-1">
-                      <span className="text-[11px] font-black text-slate-700">حمزة | Hamza AI</span>
-                      <span className="text-[10px] text-slate-400">{msg.timestamp}</span>
-                      {getEngineBadge(msg.engineMode)}
+          {messages.map((msg) => {
+            const showSnapshot = Boolean(
+              msg.quantSnapshot && msg.dataMetadata && (msg.isFullReport || expandedSnapshots[msg.id])
+            );
+
+            return (
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}>
+                {/* رسائل المساعد حمزة */}
+                {msg.role === 'assistant' && (
+                  <div className="flex items-start gap-2 sm:gap-3 w-full max-w-full sm:max-w-[94%]">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-xl bg-indigo-950 text-white flex items-center justify-center text-xs sm:text-sm shadow-xs mt-1">
+                      🦅
                     </div>
+                    <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 px-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] font-black text-slate-700">حمزة | Hamza AI</span>
+                          <span className="text-[10px] text-slate-400">{msg.timestamp}</span>
+                          {getEngineBadge(msg.engineMode)}
+                        </div>
 
-                    {/* شريط بيانات الحداثة والملخص الكمي عند وجود تحليل فعلي */}
-                    {msg.quantSnapshot && msg.dataMetadata && (
-                      <div className="bg-slate-900 text-white p-3 rounded-2xl border border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
-                        <div>
-                          <span className="text-slate-400 block">السهم / السعر</span>
-                          <span className="font-black text-amber-400" dir="ltr">
-                            {msg.quantSnapshot.symbol}: {msg.dataMetadata.current_price ?? 'N/A'} EGP
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block">القرار الكمي</span>
-                          <span className="font-black text-white">
-                            {msg.quantSnapshot.decision_and_plan?.decision_code || 'N/A'} (R:R:{' '}
-                            {msg.quantSnapshot.decision_and_plan?.risk_reward_display || 'N/A'})
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block">آخر شمعة مؤكدة</span>
-                          <span className="font-bold text-slate-200" dir="ltr">
-                            {msg.dataMetadata.last_bar_date || 'غير محدد'}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-slate-400 block">مصدر البيانات</span>
-                          <span className="font-bold text-emerald-300 truncate block" dir="ltr">
-                            {msg.dataMetadata.data_source || 'EGX Feed'}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="bg-white p-3.5 sm:p-5 rounded-2xl rounded-tr-none shadow-2xs border border-slate-200 text-slate-800 min-w-0">
-                      {formatAssistantMessage(msg.content)}
-
-                      {/* أزرار تفاعلية عند وجود التباس في اسم السهم */}
-                      {msg.candidates && msg.candidates.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-2">
-                          {msg.candidates.map((cand) => (
+                        {/* زر اختياري لإظهار/إخفاء البطاقة الرقمية أو طلب التقرير الكامل عند الرغبة فقط */}
+                        {msg.quantSnapshot && msg.dataMetadata && (
+                          <div className="flex items-center gap-1.5">
                             <button
-                              key={cand.symbol}
                               type="button"
-                              onClick={() => handleSendMessage(`حلل سهم ${cand.symbol}`)}
-                              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black px-3 py-1.5 rounded-xl transition cursor-pointer"
+                              onClick={() =>
+                                setExpandedSnapshots((prev) => ({ ...prev, [msg.id]: !showSnapshot }))
+                              }
+                              className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-lg cursor-pointer transition"
                             >
-                              تحليل {cand.symbol} ({cand.name})
+                              {showSnapshot ? '🔼 إخفاء بطاقة الأرقام' : '📊 بطاقة أرقام السهم'}
                             </button>
-                          ))}
+                            {!msg.isFullReport && msg.symbol && (
+                              <button
+                                type="button"
+                                onClick={() => handleSendMessage(`حلل سهم ${msg.symbol} تقرير كامل`)}
+                                disabled={isLoading}
+                                className="text-[10px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 px-2 py-0.5 rounded-lg cursor-pointer transition"
+                              >
+                                📄 طلب التقرير الكامل
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* بطاقة الأرقام تظهر فقط في التقرير الكامل أو عند ضغط المستخدم على زر إظهارها */}
+                      {showSnapshot && msg.quantSnapshot && msg.dataMetadata && (
+                        <div className="bg-slate-900 text-white p-3 rounded-2xl border border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                          <div>
+                            <span className="text-slate-400 block">السهم / السعر</span>
+                            <span className="font-black text-amber-400" dir="ltr">
+                              {msg.quantSnapshot.symbol}: {msg.dataMetadata.current_price ?? 'N/A'} EGP
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block">إشارة المحرك</span>
+                            <span className="font-black text-white">
+                              {msg.quantSnapshot.decision_and_plan?.decision_code || 'N/A'} (R:R:{' '}
+                              {msg.quantSnapshot.decision_and_plan?.risk_reward_display || 'N/A'})
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block">آخر شمعة مؤكدة</span>
+                            <span className="font-bold text-slate-200" dir="ltr">
+                              {msg.dataMetadata.last_bar_date || 'غير محدد'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block">مصدر البيانات</span>
+                            <span className="font-bold text-emerald-300 truncate block" dir="ltr">
+                              {msg.dataMetadata.data_source || 'EGX Feed'}
+                            </span>
+                          </div>
                         </div>
                       )}
-                    </div>
-                  </div>
-                </div>
-              )}
 
-              {/* رسائل المستخدم */}
-              {msg.role === 'user' && (
-                <div className="flex items-start gap-2 sm:gap-3 max-w-[90%] sm:max-w-[80%] flex-row-reverse">
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-xl bg-emerald-600 flex items-center justify-center text-xs sm:text-sm text-white shadow-xs mt-1">
-                    👤
-                  </div>
-                  <div className="flex flex-col gap-1 items-end min-w-0">
-                    <div className="flex items-center gap-1.5 px-1">
-                      <span className="text-[11px] font-bold text-slate-500">أنت</span>
-                      <span className="text-[10px] text-slate-400">{msg.timestamp}</span>
+                      <div className="bg-white p-3.5 sm:p-5 rounded-2xl rounded-tr-none shadow-2xs border border-slate-200 text-slate-800 min-w-0">
+                        {formatAssistantMessage(msg.content)}
+
+                        {/* أزرار تفاعلية عند وجود التباس في اسم السهم */}
+                        {msg.candidates && msg.candidates.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-2">
+                            {msg.candidates.map((cand) => (
+                              <button
+                                key={cand.symbol}
+                                type="button"
+                                onClick={() => handleSendMessage(`حلل سهم ${cand.symbol}`)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black px-3 py-1.5 rounded-xl transition cursor-pointer"
+                              >
+                                اختيار {cand.symbol} ({cand.name})
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="bg-indigo-600 text-white p-3 sm:p-3.5 rounded-2xl rounded-tl-none shadow-xs text-xs sm:text-sm md:text-base leading-relaxed font-bold text-right break-words">
-                      {msg.content}
+                  </div>
+                )}
+
+                {/* رسائل المستخدم */}
+                {msg.role === 'user' && (
+                  <div className="flex items-start gap-2 sm:gap-3 max-w-[90%] sm:max-w-[80%] flex-row-reverse">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-xl bg-emerald-600 flex items-center justify-center text-xs sm:text-sm text-white shadow-xs mt-1">
+                      👤
+                    </div>
+                    <div className="flex flex-col gap-1 items-end min-w-0">
+                      <div className="flex items-center gap-1.5 px-1">
+                        <span className="text-[11px] font-bold text-slate-500">أنت</span>
+                        <span className="text-[10px] text-slate-400">{msg.timestamp}</span>
+                      </div>
+                      <div className="bg-indigo-600 text-white p-3 sm:p-3.5 rounded-2xl rounded-tl-none shadow-xs text-xs sm:text-sm md:text-base leading-relaxed font-bold text-right break-words">
+                        {msg.content}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
 
           {/* مؤشر التحميل */}
           {isLoading && (
@@ -537,7 +609,7 @@ export default function HamzaAIPage() {
                 <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '0.12s' }} />
                 <div className="w-2 h-2 bg-indigo-800 rounded-full animate-bounce" style={{ animationDelay: '0.24s' }} />
                 <span className="text-xs text-slate-600 font-bold mr-1">
-                  جاري جلب بيانات البورصة المصرية وتشغيل محرك التحليل الكمي...
+                  جاري فحص سؤالك واستخراج الأدلة المطلوبة...
                 </span>
               </div>
             </div>
@@ -545,16 +617,70 @@ export default function HamzaAIPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 3. شريط الأسئلة المقترحة وحقل الإدخال */}
-        <div className="p-3 sm:p-4 bg-white border-t border-slate-200">
+        {/* 3. أزرار الإجراءات السريعة + الأسئلة المقترحة + حقل الإدخال الحر */}
+        <div className="p-3 sm:p-4 bg-white border-t border-slate-200 space-y-2.5">
+          {/* أزرار إجراءات سريعة مساعدة دون تقييد حرية الكتابة (البند العاشر) */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold text-slate-400 ml-1">إجراءات سريعة:</span>
+            <button
+              type="button"
+              onClick={() => handleQuickAction('ANALYZE')}
+              disabled={isLoading}
+              className="text-[11px] font-black bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border border-slate-200 px-2.5 py-1 rounded-lg transition cursor-pointer"
+            >
+              📈 حلل السهم
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickAction('POSITION')}
+              disabled={isLoading}
+              className="text-[11px] font-black bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border border-slate-200 px-2.5 py-1 rounded-lg transition cursor-pointer"
+            >
+              💼 راجع مركزي
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickAction('LIQUIDITY')}
+              disabled={isLoading}
+              className="text-[11px] font-black bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border border-slate-200 px-2.5 py-1 rounded-lg transition cursor-pointer"
+            >
+              💧 السيولة
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickAction('SR')}
+              disabled={isLoading}
+              className="text-[11px] font-black bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border border-slate-200 px-2.5 py-1 rounded-lg transition cursor-pointer"
+            >
+              🧱 الدعم والمقاومة
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickAction('EXPLAIN')}
+              disabled={isLoading}
+              className="text-[11px] font-black bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border border-slate-200 px-2.5 py-1 rounded-lg transition cursor-pointer"
+            >
+              🎓 اشرح المؤشر
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickAction('COMPARE')}
+              disabled={isLoading}
+              className="text-[11px] font-black bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border border-slate-200 px-2.5 py-1 rounded-lg transition cursor-pointer"
+            >
+              ⚖️ قارن سهمين
+            </button>
+          </div>
+
+          {/* اقتراحات سياقية */}
           {suggestions.length > 0 && !isLoading && (
-            <div className="flex flex-wrap gap-1.5 mb-2.5">
+            <div className="flex flex-wrap gap-1.5">
               {suggestions.slice(0, 4).map((suggestion, index) => (
                 <button
                   key={index}
                   type="button"
                   onClick={() => handleSendMessage(suggestion)}
-                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-[11px] sm:text-xs font-bold px-2.5 py-1.5 rounded-xl transition cursor-pointer text-right"
+                  className="bg-indigo-50/70 hover:bg-indigo-100 text-indigo-800 border border-indigo-200/80 text-[11px] font-bold px-2.5 py-1 rounded-xl transition cursor-pointer text-right"
                 >
                   💡 {suggestion}
                 </button>
@@ -562,13 +688,19 @@ export default function HamzaAIPage() {
             </div>
           )}
 
+          {/* حقل الكتابة الحرة */}
           <div className="flex items-center gap-2">
             <input
+              ref={inputRef}
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="اسأل حمزة عن أي سهم مصري (مثال: حلل فوري، أو قارن فوري وإيديتا)..."
+              placeholder={
+                activeSymbol
+                  ? `اسأل حمزة عن ${activeSymbol} أو أي سهم آخر (مثال: طيب لو استنيت للدعم؟)...`
+                  : 'اكتب سؤالك بحرية (مثال: اشتريت مدينة مصر بسعر 6.8، أخرج ولا أستنى؟)...'
+              }
               disabled={isLoading}
               className="flex-1 min-w-0 bg-slate-100 border border-slate-300 focus:border-indigo-600 focus:bg-white p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm md:text-base outline-none transition disabled:opacity-50 font-bold text-slate-900"
             />
@@ -581,12 +713,6 @@ export default function HamzaAIPage() {
               <span>إرسال</span>
               <span>➤</span>
             </button>
-          </div>
-
-          <div className="text-center mt-2">
-            <span className="text-[10px] text-slate-400 font-bold block">
-              يعتمد حمزة حصرياً على حسابات محرك EGX Pro الكمي ولا ينفذ أوامر تداول تلقائية.
-            </span>
           </div>
         </div>
       </div>
