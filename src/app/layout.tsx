@@ -84,7 +84,7 @@ export default function RootLayout({
               href="/lows-screener" 
               className="whitespace-nowrap flex items-center gap-2 md:gap-3 font-bold text-xs sm:text-sm md:text-base text-rose-700 bg-rose-50/70 hover:bg-rose-100 border border-rose-200 p-2.5 md:p-3 rounded-xl transition-all"
             >
-              <span className="text-lg md:text-xl">📉</span> ماسح القيعان (52W & 6M)
+              <span className="text-lg md:text-xl">📉</span> ماسح القيعان 
             </Link>
             
             <Link 
