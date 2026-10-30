@@ -23,10 +23,9 @@ export default function RootLayout({
     <html lang="ar" dir="rtl">
       <body className={`${cairo.className} bg-gray-50 text-gray-900 flex flex-col md:flex-row min-h-screen overflow-x-hidden`}>
         
-        {/* القائمة الجانبية (Sidebar) - ثابتة على اليمين في الشاشات الكبيرة وشريط علوي متجاوب على الموبايل (320px - 430px) */}
+        {/* القائمة الجانبية (Sidebar) */}
         <aside className="w-full md:w-64 bg-white shadow-md md:shadow-xl border-b md:border-b-0 md:border-l border-gray-200 md:fixed md:top-0 md:right-0 md:h-screen z-50 flex flex-col">
           
-          {/* قسم اللوجو */}
           <div className="p-3.5 md:p-5 border-b border-gray-100 flex items-center justify-between md:justify-start gap-3">
             <div className="flex items-center gap-3">
               <Image 
@@ -43,7 +42,6 @@ export default function RootLayout({
               </div>
             </div>
 
-            {/* اختصار سريع لحمزة على شاشات الموبايل الصغيرة */}
             <Link
               href="/hamza"
               className="md:hidden flex items-center gap-1.5 bg-indigo-600 text-white text-xs font-black px-3 py-1.5 rounded-xl shadow-xs"
@@ -62,7 +60,6 @@ export default function RootLayout({
               <span className="text-lg md:text-xl">🔍</span> التحليل المفصل
             </Link>
 
-            {/* مدخل المساعد الذكي المستقل: Hamza AI | حمزة */}
             <Link 
               href="/hamza" 
               className="whitespace-nowrap flex items-center justify-between gap-2 md:gap-3 font-black text-xs sm:text-sm md:text-base text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 p-2.5 md:p-3 rounded-xl transition-all shadow-2xs"
@@ -80,6 +77,14 @@ export default function RootLayout({
               className="whitespace-nowrap flex items-center gap-2 md:gap-3 font-bold text-xs sm:text-sm md:text-base text-gray-600 hover:text-green-700 hover:bg-green-50 p-2.5 md:p-3 rounded-xl transition-all"
             >
               <span className="text-lg md:text-xl">🎯</span> رادار السوق
+            </Link>
+
+            {/* 👇 الرابط الجديد: ماسح القيعان السنوية والنصف سنوية */}
+            <Link 
+              href="/lows-screener" 
+              className="whitespace-nowrap flex items-center gap-2 md:gap-3 font-bold text-xs sm:text-sm md:text-base text-rose-700 bg-rose-50/70 hover:bg-rose-100 border border-rose-200 p-2.5 md:p-3 rounded-xl transition-all"
+            >
+              <span className="text-lg md:text-xl">📉</span> ماسح القيعان (52W & 6M)
             </Link>
             
             <Link 
@@ -104,13 +109,11 @@ export default function RootLayout({
             </Link>
           </nav>
           
-          {/* تذييل القائمة الجانبية */}
           <div className="hidden md:block p-4 border-t border-gray-100 text-center text-xs text-gray-400">
             EGX Pro Analyzer © 2026
           </div>
         </aside>
 
-        {/* محتوى الصفحات الديناميكي */}
         <main className="flex-1 mr-0 md:mr-64 p-2.5 sm:p-5 md:p-8 w-full min-w-0">
           <div className="max-w-7xl mx-auto w-full">
             {children}
