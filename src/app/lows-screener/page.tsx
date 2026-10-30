@@ -3,34 +3,44 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
 interface ScreenerItem {
+  is_good_liquidity: any;
   symbol: string;
   name: string;
   sector: string;
+  currency: string;
+  currency_label: string;
   data_valid: boolean;
+  has_6m_data: boolean;
+  has_1y_data: boolean;
+  is_stale: boolean;
+  eligibility_status_ar: string;
   data_status_ar: string;
+  liquidity_status_ar: string;
   price_adjustment_note?: string;
   bars_count: number;
+  duplicate_rows_removed?: number;
   missing_sessions_count?: number;
+  missing_fields_ar?: string[];
   last_bar_date: string;
   last_updated: string;
   data_source: string;
-  current_price: number;
-  low_6m: number;
+  current_price: number | null;
+  low_6m: number | null;
   low_6m_date: string;
-  high_6m: number;
-  annual_low: number;
+  high_6m: number | null;
+  annual_low: number | null;
   annual_low_date: string;
-  annual_high: number;
+  annual_high: number | null;
   annual_high_date: string;
-  dist_from_annual_low_pct: number;
-  dist_from_6m_low_pct: number;
+  dist_from_annual_low_pct: number | null;
+  dist_from_6m_low_pct: number | null;
   return_6m_pct: number | null;
   return_1y_pct: number | null;
   avg_volume_20: number;
   avg_turnover_20_egp: number;
-  volume_change_pct: number;
-  rvol_ratio: number;
-  rsi_14: number;
+  volume_change_pct: number | null;
+  rvol_ratio: number | null;
+  rsi_14: number | null;
   atr_14: number | null;
   ma20: number | null;
   ma50: number | null;
@@ -43,7 +53,7 @@ interface ScreenerItem {
   nearest_resistance?: { low: number; high: number; strength_score: number; tests_count: number } | null;
   classification: string;
   classification_reasons_ar: string[];
-  bottom_opportunity_score: number;
+  bottom_opportunity_score: number | null;
   max_available_score: number;
   data_completeness_pct: number;
   score_status_ar: string;
@@ -87,8 +97,14 @@ interface CandlePoint {
   ma200?: number | null;
 }
 
+const fmtVal = (v: number | null | undefined, suffix: string = '') => {
+  if (v === null || v === undefined || Number.isNaN(Number(v))) {
+    return 'بيانات غير مكتملة';
+  }
+  return `${v}${suffix}`;
+};
+
 export default function LowsScreenerPage() {
-  // حالة البيانات والإحصائيات
   const [items, setItems] = useState<ScreenerItem[]>([]);
   const [summaryCards, setSummaryCards] = useState<any>({});
   const [sectors, setSectors] = useState<string[]>([]);
@@ -107,14 +123,16 @@ export default function LowsScreenerPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // الفلاتر القابلة للتعديل (المرحلة الثالثة والتاسعة)
+  // الفلاتر القابلة للتعديل
   const [lowScope, setLowScope] = useState<string>('EITHER');
+  const [currencyFilter, setCurrencyFilter] = useState<string>('EGP');
+  const [eligibilityFilter, setEligibilityFilter] = useState<string>('ALL');
   const [max1YReturn, setMax1YReturn] = useState<string>('5');
   const [max6MReturn, setMax6MReturn] = useState<string>('');
   const [maxDist52W, setMaxDist52W] = useState<string>('7');
   const [maxDist6M, setMaxDist6M] = useState<string>('5');
   const [minTurnover, setMinTurnover] = useState<string>('0');
-  const [minBars, setMinBars] = useState<string>('126');
+  const [minBars, setMinBars] = useState<string>('120');
   const [selectedSector, setSelectedSector] = useState<string>('ALL');
   const [rsiMin, setRsiMin] = useState<string>('');
   const [rsiMax, setRsiMax] = useState<string>('');
@@ -125,7 +143,6 @@ export default function LowsScreenerPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [includeIncomplete, setIncludeIncomplete] = useState<boolean>(false);
 
-  // الترتيب والترقيم
   const [sortBy, setSortBy] = useState<string>('bottom_opportunity_score');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState<number>(1);
@@ -133,7 +150,6 @@ export default function LowsScreenerPage() {
   const [totalFiltered, setTotalFiltered] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(1);
 
-  // نافذة تفاصيل السهم والرسم البياني ولوحة التنبيهات
   const [selectedStockDetail, setSelectedStockDetail] = useState<ScreenerItem | null>(null);
   const [detailCandles, setDetailCandles] = useState<CandlePoint[]>([]);
   const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
@@ -157,10 +173,12 @@ export default function LowsScreenerPage() {
     try {
       const params = new URLSearchParams({
         low_scope: lowScope,
+        currency: currencyFilter,
+        eligibility_filter: eligibilityFilter,
         max_dist_52w_low_pct: maxDist52W || '7',
         max_dist_6m_low_pct: maxDist6M || '5',
         min_avg_turnover_egp: minTurnover || '0',
-        min_bars_required: minBars || '126',
+        min_bars_required: minBars || '120',
         sector: selectedSector,
         trend_state: trendState,
         ma_relation: maRelation,
@@ -198,16 +216,16 @@ export default function LowsScreenerPage() {
       setIsLoading(false);
     }
   }, [
-    lowScope, max1YReturn, max6MReturn, maxDist52W, maxDist6M, minTurnover,
-    minBars, selectedSector, rsiMin, rsiMax, trendState, maRelation,
-    minScore, financialStatus, searchQuery, includeIncomplete, sortBy, sortDir, page, pageSize
+    lowScope, currencyFilter, eligibilityFilter, max1YReturn, max6MReturn,
+    maxDist52W, maxDist6M, minTurnover, minBars, selectedSector, rsiMin,
+    rsiMax, trendState, maRelation, minScore, financialStatus, searchQuery,
+    includeIncomplete, sortBy, sortDir, page, pageSize
   ]);
 
   useEffect(() => {
     fetchScreenerData(page);
   }, [fetchScreenerData, page]);
 
-  // متابعة شريط التقدم عند تشغيل المسح في الخلفية
   useEffect(() => {
     if (!scanState?.is_running) return;
     const timer = setInterval(async () => {
@@ -248,12 +266,14 @@ export default function LowsScreenerPage() {
 
   const handleResetFilters = () => {
     setLowScope('EITHER');
+    setCurrencyFilter('EGP');
+    setEligibilityFilter('ALL');
     setMax1YReturn('5');
     setMax6MReturn('');
     setMaxDist52W('7');
     setMaxDist6M('5');
     setMinTurnover('0');
-    setMinBars('126');
+    setMinBars('120');
     setSelectedSector('ALL');
     setRsiMin('');
     setRsiMax('');
@@ -267,7 +287,9 @@ export default function LowsScreenerPage() {
   };
 
   const handleAddToWatchlist = async (item: ScreenerItem) => {
-    const stopPrice = item.annual_low > 0 ? Number((item.annual_low * 0.97).toFixed(2)) : Number((item.current_price * 0.95).toFixed(2));
+    if (!item.current_price) return;
+    const baseLow = item.annual_low || item.low_6m || item.current_price;
+    const stopPrice = Number((baseLow * 0.97).toFixed(2));
     const targetPrice = Number((item.current_price * 1.12).toFixed(2));
     try {
       const res = await fetch(`${getBaseUrl()}/api/watchlist`, {
@@ -326,30 +348,34 @@ export default function LowsScreenerPage() {
       return;
     }
     const headers = [
-      'الرمز', 'اسم الشركة', 'القطاع', 'السعر الحالي', 'قاع 6 أشهر', 'قاع 52 أسبوعاً',
-      'أعلى سعر سنوي', 'البعد عن القاع السنوي %', 'البعد عن القاع النصف سنوي %',
-      'أداء 6 أشهر %', 'أداء سنة %', 'متوسط قيمة التداول (ج.م)', 'RSI 14',
+      'الرمز', 'اسم الشركة', 'العملة', 'القطاع', 'حالة السهم', 'حالة السيولة',
+      'السعر الحالي', 'قاع 6 أشهر', 'قاع 52 أسبوعاً', 'أعلى سعر سنوي',
+      'البعد عن القاع السنوي %', 'البعد عن القاع النصف سنوي %',
+      'أداء 6 أشهر %', 'أداء سنة %', 'متوسط قيمة التداول (20 جلسة)', 'RSI 14',
       'MA50', 'MA100', 'MA200', 'Bottom Opportunity Score', 'اكتمال البيانات %',
       'التصنيف', 'آخر تحديث'
     ];
     const rows = items.map((r) => [
       r.symbol,
       `"${r.name}"`,
+      r.currency || 'EGP',
       `"${r.sector}"`,
-      r.current_price ?? 'N/A',
-      r.low_6m ?? 'N/A',
-      r.annual_low ?? 'N/A',
-      r.annual_high ?? 'N/A',
-      r.dist_from_annual_low_pct ?? 'N/A',
-      r.dist_from_6m_low_pct ?? 'N/A',
-      r.return_6m_pct ?? 'N/A',
-      r.return_1y_pct ?? 'N/A',
-      r.avg_turnover_20_egp ?? 0,
-      r.rsi_14 ?? 'N/A',
-      r.ma50 ?? 'N/A',
-      r.ma100 ?? 'N/A',
-      r.ma200 ?? 'N/A',
-      `${r.bottom_opportunity_score}/${r.max_available_score}`,
+      `"${r.eligibility_status_ar || 'بيانات ناقصة'}"`,
+      `"${r.liquidity_status_ar || 'سيولة ضعيفة'}"`,
+      fmtVal(r.current_price),
+      fmtVal(r.low_6m),
+      fmtVal(r.annual_low),
+      fmtVal(r.annual_high),
+      fmtVal(r.dist_from_annual_low_pct, '%'),
+      fmtVal(r.dist_from_6m_low_pct, '%'),
+      fmtVal(r.return_6m_pct, '%'),
+      fmtVal(r.return_1y_pct, '%'),
+      Math.round(r.avg_turnover_20_egp || 0),
+      fmtVal(r.rsi_14),
+      fmtVal(r.ma50),
+      fmtVal(r.ma100),
+      fmtVal(r.ma200),
+      r.bottom_opportunity_score !== null ? `${r.bottom_opportunity_score}/${r.max_available_score}` : 'غير مؤهل للتقييم',
       `${r.data_completeness_pct}%`,
       `"${r.classification}"`,
       r.last_bar_date
@@ -368,6 +394,14 @@ export default function LowsScreenerPage() {
     URL.revokeObjectURL(url);
   };
 
+  const getEligibilityBadgeClass = (status: string) => {
+    if (status === 'بيانات مكتملة') return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+    if (status === 'بيانات ناقصة') return 'bg-amber-100 text-amber-800 border-amber-300';
+    if (status === 'سيولة ضعيفة') return 'bg-orange-100 text-orange-800 border-orange-300';
+    if (status === 'بيانات قديمة') return 'bg-rose-100 text-rose-800 border-rose-300';
+    return 'bg-slate-200 text-slate-700 border-slate-300';
+  };
+
   const getClassificationBadgeClass = (cls: string) => {
     if (cls.includes('بدأ الارتداد') || cls.includes('سيولة مرتفعة')) {
       return 'bg-emerald-100 text-emerald-800 border-emerald-300';
@@ -384,12 +418,11 @@ export default function LowsScreenerPage() {
     return 'bg-blue-100 text-blue-800 border-blue-300';
   };
 
-  // رسم بياني SVG تفاعلي يعرض حركة السعر لـ 252 جلسة مع خط أفقي للقاع السنوي وخط أفقي للقاع النصف سنوي
   const renderPriceAndLowsChart = (candles: CandlePoint[], stock: ScreenerItem) => {
     if (!candles.length) {
       return (
         <div className="h-64 flex items-center justify-center bg-slate-900 text-slate-400 rounded-2xl text-sm font-bold">
-          {loadingDetails ? '⏳ جاري تحميل الرسم البياني اليومي لـ 252 جلسة...' : 'لا تتوفر بيانات رسم بياني كافية'}
+          {loadingDetails ? '⏳ جاري تحميل الرسم البياني اليومي...' : 'لا تتوفر بيانات رسم بياني كافية'}
         </div>
       );
     }
@@ -399,7 +432,8 @@ export default function LowsScreenerPage() {
     const padX = 50;
     const padY = 25;
 
-    const allPrices = candles.flatMap((c) => [c.high, c.low]).concat([stock.annual_low, stock.low_6m]);
+    const validExtras = [stock.annual_low, stock.low_6m].filter((x): x is number => x !== null && x !== undefined);
+    const allPrices = candles.flatMap((c) => [c.high, c.low]).concat(validExtras);
     const minP = Math.min(...allPrices) * 0.985;
     const maxP = Math.max(...allPrices) * 1.015;
     const priceSpan = Math.max(0.01, maxP - minP);
@@ -413,14 +447,14 @@ export default function LowsScreenerPage() {
       .filter(Boolean)
       .join(' ');
 
-    const yAnnualLow = toY(stock.annual_low);
-    const y6MLow = toY(stock.low_6m);
+    const yAnnualLow = stock.annual_low !== null ? toY(stock.annual_low) : null;
+    const y6MLow = stock.low_6m !== null ? toY(stock.low_6m) : null;
 
     return (
       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 overflow-x-auto">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3 text-xs text-slate-300">
           <div className="font-black text-white">
-            📈 الشارت اليومي ({candles.length} جلسة) — {stock.name} ({stock.symbol})
+            📈 الشارت اليومي ({candles.length} جلسة فعلية) — {stock.name} ({stock.symbol}) [{stock.currency_label}]
           </div>
           <div className="flex flex-wrap items-center gap-4 text-[11px] font-bold">
             <span className="flex items-center gap-1.5 text-sky-400">
@@ -429,17 +463,20 @@ export default function LowsScreenerPage() {
             <span className="flex items-center gap-1.5 text-amber-400">
               <span className="w-3 h-0.5 bg-amber-400 inline-block" /> المتوسط MA50
             </span>
-            <span className="flex items-center gap-1.5 text-rose-400">
-              <span className="w-3 h-0.5 border-b-2 border-dashed border-rose-500 inline-block" /> قاع 52 أسبوعاً ({stock.annual_low} ج.م)
-            </span>
-            <span className="flex items-center gap-1.5 text-emerald-400">
-              <span className="w-3 h-0.5 border-b-2 border-dashed border-emerald-400 inline-block" /> قاع 6 أشهر ({stock.low_6m} ج.م)
-            </span>
+            {stock.annual_low !== null && (
+              <span className="flex items-center gap-1.5 text-rose-400">
+                <span className="w-3 h-0.5 border-b-2 border-dashed border-rose-500 inline-block" /> قاع 52 أسبوعاً ({stock.annual_low})
+              </span>
+            )}
+            {stock.low_6m !== null && (
+              <span className="flex items-center gap-1.5 text-emerald-400">
+                <span className="w-3 h-0.5 border-b-2 border-dashed border-emerald-400 inline-block" /> قاع 6 أشهر ({stock.low_6m})
+              </span>
+            )}
           </div>
         </div>
 
         <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-64 sm:h-72">
-          {/* خطوط الشبكة */}
           {[0.2, 0.5, 0.8].map((ratio, idx) => {
             const yVal = padY + ratio * (height - padY * 2);
             const pVal = (maxP - ratio * priceSpan).toFixed(2);
@@ -453,40 +490,25 @@ export default function LowsScreenerPage() {
             );
           })}
 
-          {/* الخط الأفقي للقاع السنوي (52-Week Low) */}
-          <line
-            x1={padX}
-            y1={yAnnualLow}
-            x2={width - padX}
-            y2={yAnnualLow}
-            stroke="#f43f5e"
-            strokeWidth="1.8"
-            strokeDasharray="6 4"
-          />
-          <text x={width - padX - 155} y={Math.max(14, yAnnualLow - 6)} fill="#fb7185" fontSize="10" fontWeight="bold">
-            قاع 52 أسبوعاً: {stock.annual_low} ج.م
-          </text>
-
-          {/* الخط الأفقي للقاع النصف سنوي (6-Month Low) */}
-          <line
-            x1={padX}
-            y1={y6MLow}
-            x2={width - padX}
-            y2={y6MLow}
-            stroke="#10b981"
-            strokeWidth="1.6"
-            strokeDasharray="4 4"
-          />
-          <text x={padX + 8} y={Math.max(14, y6MLow - 6)} fill="#34d399" fontSize="10" fontWeight="bold">
-            قاع 6 أشهر: {stock.low_6m} ج.م
-          </text>
-
-          {/* خط المتوسط المتحرك MA50 */}
-          {ma50Points && (
-            <polyline fill="none" stroke="#f59e0b" strokeWidth="1.5" points={ma50Points} opacity="0.85" />
+          {yAnnualLow !== null && (
+            <>
+              <line x1={padX} y1={yAnnualLow} x2={width - padX} y2={yAnnualLow} stroke="#f43f5e" strokeWidth="1.8" strokeDasharray="6 4" />
+              <text x={width - padX - 165} y={Math.max(14, yAnnualLow - 6)} fill="#fb7185" fontSize="10" fontWeight="bold">
+                قاع 52 أسبوعاً: {stock.annual_low} {stock.currency_label}
+              </text>
+            </>
           )}
 
-          {/* خط السعر اليومي */}
+          {y6MLow !== null && (
+            <>
+              <line x1={padX} y1={y6MLow} x2={width - padX} y2={y6MLow} stroke="#10b981" strokeWidth="1.6" strokeDasharray="4 4" />
+              <text x={padX + 8} y={Math.max(14, y6MLow - 6)} fill="#34d399" fontSize="10" fontWeight="bold">
+                قاع 6 أشهر: {stock.low_6m} {stock.currency_label}
+              </text>
+            </>
+          )}
+
+          {ma50Points && <polyline fill="none" stroke="#f59e0b" strokeWidth="1.5" points={ma50Points} opacity="0.85" />}
           <polyline fill="none" stroke="#38bdf8" strokeWidth="2.2" points={closePoints} />
         </svg>
       </div>
@@ -495,14 +517,13 @@ export default function LowsScreenerPage() {
 
   return (
     <div className="space-y-6 rtl text-right" dir="rtl">
-      {/* إشعار Toast */}
       {toastMsg && (
         <div className="fixed bottom-5 left-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl border border-slate-700 text-xs sm:text-sm font-bold">
           🦅 {toastMsg}
         </div>
       )}
 
-      {/* رأس الصفحة وأزرار التحكم العلوية */}
+      {/* رأس الصفحة */}
       <div className="bg-gradient-to-l from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 rounded-3xl shadow-md border border-slate-800">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -513,7 +534,7 @@ export default function LowsScreenerPage() {
               </h1>
             </div>
             <p className="text-indigo-200 text-xs sm:text-sm mt-1 font-medium">
-              52-Week & 6-Month Lows Screener — اكتشاف مبكر للأسهم القريبة من قيعانها في البورصة المصرية مع تقييم السيولة والاتجاه والوضع المالي دون توصيات شراء عشوائية
+              52-Week & 6-Month Lows Screener — تدقيق صارم للجلسات الفعلية، فصل عملة التداول (EGP/USD)، ومنع تقييم الأسهم ناقصة البيانات أو ضعيفة السيولة
             </p>
           </div>
 
@@ -533,12 +554,11 @@ export default function LowsScreenerPage() {
             >
               {scanState?.is_running
                 ? `⏳ جاري الفحص (${scanState.progress_pct || 0}%)...`
-                : '🔄 تحديث وفحص السوق الآن'}
+                : '🔄 إعادة فحص وتدقيق السوق الآن'}
             </button>
           </div>
         </div>
 
-        {/* شريط تقدم الفحص الخلفي */}
         {scanState?.is_running && (
           <div className="mt-4 bg-white/10 p-3 rounded-2xl border border-white/15">
             <div className="flex justify-between text-xs font-bold text-indigo-200 mb-1.5">
@@ -548,57 +568,44 @@ export default function LowsScreenerPage() {
               </span>
             </div>
             <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-400 transition-all duration-300"
-                style={{ width: `${scanState.progress_pct || 5}%` }}
-              />
+              <div className="h-full bg-emerald-400 transition-all duration-300" style={{ width: `${scanState.progress_pct || 5}%` }} />
             </div>
           </div>
         )}
       </div>
 
-      {/* 1. البطاقات الإحصائية الـ 6 أعلى الصفحة (المرحلة التاسعة) */}
+      {/* البطاقات الإحصائية */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
           <span className="text-[11px] font-bold text-slate-500 block">عدد الأسهم المفحوصة</span>
-          <span className="text-xl font-black text-slate-900 mt-1 block">
-            {summaryCards.total_scanned ?? 0}
-          </span>
+          <span className="text-xl font-black text-slate-900 mt-1 block">{summaryCards.total_scanned ?? 0}</span>
           <span className="text-[10px] text-slate-400 font-bold">
-            مكتمل البيانات: {summaryCards.valid_stocks_count ?? 0}
+            مكتمل 52 أسبوعاً: {summaryCards.complete_1y_stocks_count ?? 0} | ناقص: {summaryCards.incomplete_stocks_count ?? 0}
           </span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-rose-200 shadow-2xs">
           <span className="text-[11px] font-bold text-rose-700 block">قريبة من قاع 52 أسبوعاً</span>
-          <span className="text-xl font-black text-rose-600 mt-1 block">
-            {summaryCards.near_52w_low_count ?? 0}
-          </span>
-          <span className="text-[10px] text-slate-400 font-bold">ضمن مسافة ≤ 7%</span>
+          <span className="text-xl font-black text-rose-600 mt-1 block">{summaryCards.near_52w_low_count ?? 0}</span>
+          <span className="text-[10px] text-slate-400 font-bold">ضمن ≤ 7% (بسجل سنوي مكتمل)</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-indigo-200 shadow-2xs">
           <span className="text-[11px] font-bold text-indigo-700 block">قريبة من قاع 6 أشهر</span>
-          <span className="text-xl font-black text-indigo-600 mt-1 block">
-            {summaryCards.near_6m_low_count ?? 0}
-          </span>
-          <span className="text-[10px] text-slate-400 font-bold">ضمن مسافة ≤ 5%</span>
+          <span className="text-xl font-black text-indigo-600 mt-1 block">{summaryCards.near_6m_low_count ?? 0}</span>
+          <span className="text-[10px] text-slate-400 font-bold">ضمن ≤ 5% (بسجل 6م مكتمل)</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-2xs">
           <span className="text-[11px] font-bold text-emerald-700 block">ذات سيولة جيدة قرب القاع</span>
-          <span className="text-xl font-black text-emerald-600 mt-1 block">
-            {summaryCards.good_liquidity_near_low_count ?? 0}
-          </span>
-          <span className="text-[10px] text-slate-400 font-bold">تداول يومي ≥ مليون ج.م</span>
+          <span className="text-xl font-black text-emerald-600 mt-1 block">{summaryCards.good_liquidity_near_low_count ?? 0}</span>
+          <span className="text-[10px] text-slate-400 font-bold">تداول 20 جلسة ≥ مليون ج.م</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-2xs">
           <span className="text-[11px] font-bold text-amber-700 block">بدأت ارتداداً فنياً</span>
-          <span className="text-xl font-black text-amber-600 mt-1 block">
-            {summaryCards.rebounding_count ?? 0}
-          </span>
-          <span className="text-[10px] text-slate-400 font-bold">أعلى MA20 وتحسن RSI</span>
+          <span className="text-xl font-black text-amber-600 mt-1 block">{summaryCards.rebounding_count ?? 0}</span>
+          <span className="text-[10px] text-slate-400 font-bold">سيولة جيدة + أعلى MA20</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
@@ -606,29 +613,41 @@ export default function LowsScreenerPage() {
           <span className="text-xs font-black text-slate-800 mt-1.5 block" dir="ltr">
             {lastUpdated || 'قيد التحديث'}
           </span>
-          <span className="text-[10px] text-emerald-600 font-bold">EGX Adjusted EOD</span>
+          <span className="text-[10px] text-emerald-600 font-bold">فصل تلقائي EGP / USD</span>
         </div>
       </div>
 
-      {/* 2. لوحة الفلاتر الشاملة القابلة للتعديل (المرحلة الثالثة والتاسعة) */}
+      {/* لوحة الفلاتر */}
       <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <h2 className="text-sm sm:text-base font-black text-slate-800 flex items-center gap-2">
-            <span>🎛️</span> فلاتر البحث المتقدم في القيعان السنوية والنصف سنوية
+            <span>🎛️</span> فلاتر البحث المتقدم وتدقيق البيانات والعملة
           </h2>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleResetFilters}
-              className="text-xs font-bold text-slate-600 hover:text-rose-600 bg-slate-100 px-3 py-1.5 rounded-xl transition cursor-pointer"
-            >
-              إعادة الضبط للقيم الافتراضية
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="text-xs font-bold text-slate-600 hover:text-rose-600 bg-slate-100 px-3 py-1.5 rounded-xl transition cursor-pointer"
+          >
+            إعادة الضبط للقيم الافتراضية
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-          {/* اختيار شرط القاع (السنوي / النصف سنوي / أحدهما / كلاهما) */}
+          {/* فلتر العملة (فصل الأسهم الجنيهية عن الدولارية) */}
+          <div>
+            <label className="font-bold text-slate-600 block mb-1">عملة تداول السهم:</label>
+            <select
+              value={currencyFilter}
+              onChange={(e) => { setCurrencyFilter(e.target.value); setPage(1); }}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-indigo-900"
+            >
+              <option value="EGP">الأسهم المقومة بالجنيه المصري (EGP فقط)</option>
+              <option value="USD">الأسهم المقومة بالدولار الأمريكي (USD فقط)</option>
+              <option value="ALL">جميع العملات (EGP + USD)</option>
+            </select>
+          </div>
+
+          {/* نطاق القاع */}
           <div>
             <label className="font-bold text-slate-600 block mb-1">نطاق البحث في القيعان:</label>
             <select
@@ -637,21 +656,37 @@ export default function LowsScreenerPage() {
               className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-800"
             >
               <option value="EITHER">أحد القاعين (السنوي أو النصف سنوي)</option>
-              <option value="ANNUAL">القاع السنوي فقط (52 أسبوعاً)</option>
-              <option value="SIX_MONTH">القاع النصف سنوي فقط (6 أشهر)</option>
+              <option value="ANNUAL">القاع السنوي فقط (يشترط 235+ جلسة)</option>
+              <option value="SIX_MONTH">القاع النصف سنوي فقط (يشترط 120+ جلسة)</option>
               <option value="BOTH">كلا القاعين معاً</option>
               <option value="ALL">جميع الأسهم المفحوصة</option>
             </select>
           </div>
 
-          {/* أقصى أداء آخر 12 شهراً */}
+          {/* حالة أهلية السهم */}
+          <div>
+            <label className="font-bold text-slate-600 block mb-1">حالة السهم وجودة البيانات:</label>
+            <select
+              value={eligibilityFilter}
+              onChange={(e) => { setEligibilityFilter(e.target.value); setPage(1); }}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-800"
+            >
+              <option value="ALL">الكل</option>
+              <option value="COMPLETE">بيانات مكتملة فقط</option>
+              <option value="INCOMPLETE">بيانات ناقصة</option>
+              <option value="WEAK_LIQ">سيولة ضعيفة</option>
+              <option value="STALE">بيانات قديمة</option>
+              <option value="UNQUALIFIED">غير مؤهل للتقييم</option>
+            </select>
+          </div>
+
+          {/* أداء آخر 12 شهراً */}
           <div>
             <label className="font-bold text-slate-600 block mb-1">أداء آخر 12 شهراً ≤ (%):</label>
             <input
               type="number"
               value={max1YReturn}
               onChange={(e) => { setMax1YReturn(e.target.value); setPage(1); }}
-              placeholder="الافتراضي: 5%"
               className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-800"
             />
           </div>
@@ -680,12 +715,12 @@ export default function LowsScreenerPage() {
 
           {/* الحد الأدنى لمتوسط قيمة التداول */}
           <div>
-            <label className="font-bold text-slate-600 block mb-1">الحد الأدنى لقيمة التداول اليومية (ج.م):</label>
+            <label className="font-bold text-slate-600 block mb-1">الحد الأدنى لقيمة التداول (20 جلسة):</label>
             <input
               type="number"
               value={minTurnover}
               onChange={(e) => { setMinTurnover(e.target.value); setPage(1); }}
-              placeholder="مثال: 500000"
+              placeholder="مثال: 1000000"
               className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-800"
             />
           </div>
@@ -736,30 +771,6 @@ export default function LowsScreenerPage() {
             </select>
           </div>
 
-          {/* نطاق RSI */}
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="font-bold text-slate-600 block mb-1">RSI من:</label>
-              <input
-                type="number"
-                value={rsiMin}
-                onChange={(e) => { setRsiMin(e.target.value); setPage(1); }}
-                placeholder="0"
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-800"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="font-bold text-slate-600 block mb-1">RSI إلى:</label>
-              <input
-                type="number"
-                value={rsiMax}
-                onChange={(e) => { setRsiMax(e.target.value); setPage(1); }}
-                placeholder="100"
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-800"
-              />
-            </div>
-          </div>
-
           {/* الحد الأدنى لدرجة التقييم */}
           <div>
             <label className="font-bold text-slate-600 block mb-1">الحد الأدنى لـ Opportunity Score:</label>
@@ -767,23 +778,8 @@ export default function LowsScreenerPage() {
               type="number"
               value={minScore}
               onChange={(e) => { setMinScore(e.target.value); setPage(1); }}
-              placeholder="0"
               className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-800"
             />
-          </div>
-
-          {/* حالة البيانات المالية */}
-          <div>
-            <label className="font-bold text-slate-600 block mb-1">حالة البيانات المالية:</label>
-            <select
-              value={financialStatus}
-              onChange={(e) => { setFinancialStatus(e.target.value); setPage(1); }}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-800"
-            >
-              <option value="ALL">الكل (مكتمل وغير مكتمل مالياً)</option>
-              <option value="AVAILABLE">بيانات مالية متوفرة فقط</option>
-              <option value="INCOMPLETE">تقييم فني فقط (بيانات مالية غير متاحة)</option>
-            </select>
           </div>
 
           {/* بحث بالاسم أو الرمز */}
@@ -800,7 +796,7 @@ export default function LowsScreenerPage() {
         </div>
       </div>
 
-      {/* 3. شريط أدوات الجدول والتصدير CSV / Excel */}
+      {/* شريط التصدير */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 rounded-2xl border border-slate-200">
         <div className="text-xs sm:text-sm font-black text-slate-700">
           النتائج المطابقة للفلاتر: <span className="text-indigo-700">{totalFiltered} سهم</span>
@@ -814,7 +810,7 @@ export default function LowsScreenerPage() {
               onChange={(e) => { setIncludeIncomplete(e.target.checked); setPage(1); }}
               className="rounded"
             />
-            إظهار الأسهم ذات البيانات التاريخية غير المكتملة
+            إظهار الأسهم غير المؤهلة أو ذات البيانات الناقصة/القديمة
           </label>
 
           <button
@@ -834,7 +830,7 @@ export default function LowsScreenerPage() {
         </div>
       </div>
 
-      {/* 4. جدول النتائج الكامل (19 عموداً مع الترتيب والأزرار التفاعلية) */}
+      {/* جدول النتائج */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs border-collapse">
@@ -842,7 +838,8 @@ export default function LowsScreenerPage() {
               <tr>
                 <th className="p-3 cursor-pointer" onClick={() => handleSort('symbol')}>الرمز ↕</th>
                 <th className="p-3">اسم الشركة</th>
-                <th className="p-3">القطاع</th>
+                <th className="p-3">العملة</th>
+                <th className="p-3">حالة السهم</th>
                 <th className="p-3 cursor-pointer" onClick={() => handleSort('current_price')}>السعر الحالي ↕</th>
                 <th className="p-3 cursor-pointer" onClick={() => handleSort('low_6m')}>قاع 6 أشهر ↕</th>
                 <th className="p-3 cursor-pointer" onClick={() => handleSort('annual_low')}>قاع 52 أسبوعاً ↕</th>
@@ -851,7 +848,7 @@ export default function LowsScreenerPage() {
                 <th className="p-3 cursor-pointer" onClick={() => handleSort('dist_from_6m_low_pct')}>البعد عن قاع 6م ↕</th>
                 <th className="p-3 cursor-pointer" onClick={() => handleSort('return_6m_pct')}>أداء 6 أشهر ↕</th>
                 <th className="p-3 cursor-pointer" onClick={() => handleSort('return_1y_pct')}>أداء سنة ↕</th>
-                <th className="p-3 cursor-pointer" onClick={() => handleSort('avg_turnover_20_egp')}>متوسط قيمة التداول ↕</th>
+                <th className="p-3 cursor-pointer" onClick={() => handleSort('avg_turnover_20_egp')}>متوسط قيمة التداول (20ج) ↕</th>
                 <th className="p-3 cursor-pointer" onClick={() => handleSort('rsi_14')}>RSI ↕</th>
                 <th className="p-3">MA50</th>
                 <th className="p-3">MA100</th>
@@ -865,14 +862,14 @@ export default function LowsScreenerPage() {
             <tbody className="divide-y divide-slate-100 font-bold text-slate-700 whitespace-nowrap">
               {isLoading ? (
                 <tr>
-                  <td colSpan={20} className="p-10 text-center text-slate-500 font-black">
-                    ⏳ جاري تحميل نتائج ماسح القيعان...
+                  <td colSpan={21} className="p-10 text-center text-slate-500 font-black">
+                    ⏳ جاري تحميل وتدقيق نتائج ماسح القيعان...
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={20} className="p-10 text-center text-slate-500 font-black">
-                    لا توجد أسهم مطابقة لشروط الفلترة الحالية. يمكنك توسيع نسبة البعد عن القاع أو الضغط على «إعادة الضبط».
+                  <td colSpan={21} className="p-10 text-center text-slate-500 font-black">
+                    لا توجد أسهم مطابقة لشروط الفلترة الحالية.
                   </td>
                 </tr>
               ) : (
@@ -884,51 +881,77 @@ export default function LowsScreenerPage() {
                   >
                     <td className="p-3 font-black text-indigo-700" dir="ltr">{item.symbol}</td>
                     <td className="p-3 font-black text-slate-900">{item.name}</td>
-                    <td className="p-3 text-slate-500">{item.sector}</td>
-                    <td className="p-3 font-black text-slate-900" dir="ltr">
-                      {item.current_price ?? '—'}
+                    <td className="p-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black ${item.currency === 'USD' ? 'bg-emerald-900 text-emerald-200' : 'bg-slate-100 text-slate-700'}`}>
+                        {item.currency || 'EGP'}
+                      </span>
                     </td>
-                    <td className="p-3 text-emerald-700" dir="ltr">{item.low_6m ?? '—'}</td>
-                    <td className="p-3 text-rose-700" dir="ltr">{item.annual_low ?? '—'}</td>
-                    <td className="p-3 text-slate-600" dir="ltr">{item.annual_high ?? '—'}</td>
+                    <td className="p-3">
+                      <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black ${getEligibilityBadgeClass(item.eligibility_status_ar)}`}>
+                        {item.eligibility_status_ar}
+                      </span>
+                    </td>
+                    <td className="p-3 font-black text-slate-900" dir="ltr">
+                      {fmtVal(item.current_price)}
+                    </td>
+                    <td className="p-3 text-emerald-700" dir="ltr">{fmtVal(item.low_6m)}</td>
+                    <td className="p-3 text-rose-700" dir="ltr">{fmtVal(item.annual_low)}</td>
+                    <td className="p-3 text-slate-600" dir="ltr">{fmtVal(item.annual_high)}</td>
                     <td className="p-3" dir="ltr">
-                      {item.dist_from_annual_low_pct !== undefined ? (
+                      {item.dist_from_annual_low_pct !== null && item.dist_from_annual_low_pct !== undefined ? (
                         <span className={`px-2 py-0.5 rounded-lg ${item.dist_from_annual_low_pct <= 5 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-800'}`}>
                           +{item.dist_from_annual_low_pct}%
                         </span>
-                      ) : '—'}
+                      ) : (
+                        <span className="text-amber-700 text-[11px]">بيانات غير مكتملة</span>
+                      )}
                     </td>
                     <td className="p-3" dir="ltr">
-                      {item.dist_from_6m_low_pct !== undefined ? (
+                      {item.dist_from_6m_low_pct !== null && item.dist_from_6m_low_pct !== undefined ? (
                         <span className={`px-2 py-0.5 rounded-lg ${item.dist_from_6m_low_pct <= 5 ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-800'}`}>
                           +{item.dist_from_6m_low_pct}%
                         </span>
-                      ) : '—'}
+                      ) : (
+                        <span className="text-amber-700 text-[11px]">بيانات غير مكتملة</span>
+                      )}
                     </td>
                     <td className={`p-3 ${Number(item.return_6m_pct) < 0 ? 'text-rose-600' : 'text-emerald-600'}`} dir="ltr">
-                      {item.return_6m_pct !== null && item.return_6m_pct !== undefined ? `${item.return_6m_pct}%` : 'N/A'}
+                      {fmtVal(item.return_6m_pct, '%')}
                     </td>
                     <td className={`p-3 ${Number(item.return_1y_pct) < 0 ? 'text-rose-600' : 'text-emerald-600'}`} dir="ltr">
-                      {item.return_1y_pct !== null && item.return_1y_pct !== undefined ? `${item.return_1y_pct}%` : 'N/A'}
+                      {fmtVal(item.return_1y_pct, '%')}
                     </td>
                     <td className="p-3" dir="ltr">
-                      {item.avg_turnover_20_egp ? `${(item.avg_turnover_20_egp / 1_000_000).toFixed(2)}M ج.م` : '—'}
+                      <div className="flex flex-col">
+                        <span>
+                          {item.avg_turnover_20_egp
+                            ? item.currency === 'USD'
+                              ? `${item.avg_turnover_20_egp.toLocaleString()} $`
+                              : `${(item.avg_turnover_20_egp / 1_000_000).toFixed(2)}M ج.م`
+                            : '0'}
+                        </span>
+                        <span className={`text-[10px] ${item.is_good_liquidity ? 'text-emerald-600' : 'text-amber-700'}`}>
+                          {item.liquidity_status_ar}
+                        </span>
+                      </div>
                     </td>
-                    <td className="p-3" dir="ltr">{item.rsi_14 ?? '—'}</td>
-                    <td className="p-3 text-slate-500" dir="ltr">{item.ma50 ?? 'N/A'}</td>
-                    <td className="p-3 text-slate-500" dir="ltr">{item.ma100 ?? 'N/A'}</td>
-                    <td className="p-3 text-slate-500" dir="ltr">{item.ma200 ?? 'N/A'}</td>
+                    <td className="p-3" dir="ltr">{fmtVal(item.rsi_14)}</td>
+                    <td className="p-3 text-slate-500" dir="ltr">{fmtVal(item.ma50)}</td>
+                    <td className="p-3 text-slate-500" dir="ltr">{fmtVal(item.ma100)}</td>
+                    <td className="p-3 text-slate-500" dir="ltr">{fmtVal(item.ma200)}</td>
                     <td className="p-3">
-                      {item.data_valid ? (
+                      {item.bottom_opportunity_score !== null ? (
                         <div className="flex flex-col">
                           <span className="font-black text-indigo-900" dir="ltr">
                             {item.bottom_opportunity_score} / {item.max_available_score}
                           </span>
-                          <span className="text-[10px] text-slate-400">
-                            اكتمال: {item.data_completeness_pct}%
+                          <span className="text-[10px] text-slate-500">
+                            اكتمال: {item.data_completeness_pct}% ({item.bars_count} ج)
                           </span>
                         </div>
-                      ) : 'N/A'}
+                      ) : (
+                        <span className="text-rose-700 text-[11px] font-black">غير مؤهل للتقييم</span>
+                      )}
                     </td>
                     <td className="p-3">
                       <span className={`px-2.5 py-1 rounded-full border text-[11px] font-black ${getClassificationBadgeClass(item.classification)}`}>
@@ -942,22 +965,19 @@ export default function LowsScreenerPage() {
                           type="button"
                           onClick={() => handleOpenStockDetails(item)}
                           className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg text-[11px] font-black cursor-pointer"
-                          title="عرض الرسم البياني وتفاصيل القيعان"
                         >
-                          📈 الشارت والتفاصيل
+                          📈 التفاصيل
                         </button>
                         <button
                           type="button"
                           onClick={() => handleAddToWatchlist(item)}
                           className="bg-amber-50 hover:bg-amber-100 text-amber-800 px-2 py-1 rounded-lg text-[11px] font-black cursor-pointer"
-                          title="إضافة إلى محفظة المتابعة"
                         >
                           ⭐ للمفضلة
                         </button>
                         <Link
                           href={`/?symbol=${item.symbol}`}
                           className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg text-[11px] font-black"
-                          title="فتح غرفة التحليل الكمي"
                         >
                           🔍 تحليل
                         </Link>
@@ -970,12 +990,9 @@ export default function LowsScreenerPage() {
           </table>
         </div>
 
-        {/* ترقيم الصفحات (Pagination) */}
         {totalPages > 1 && (
           <div className="p-4 border-t border-slate-100 flex items-center justify-between text-xs font-bold">
-            <span>
-              صفحة {page} من {totalPages}
-            </span>
+            <span>صفحة {page} من {totalPages}</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -998,22 +1015,24 @@ export default function LowsScreenerPage() {
         )}
       </div>
 
-      {/* 5. نافذة تفاصيل السهم والرسم البياني وخطي القاع السنوي والنصف سنوي (المرحلة العاشرة) */}
+      {/* نافذة تفاصيل السهم */}
       {selectedStockDetail && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
           <div className="bg-white w-full max-w-5xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[92vh] flex flex-col">
-            {/* رأس النافذة */}
             <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between">
               <div>
-                <h3 className="text-base sm:text-xl font-black flex items-center gap-2">
+                <h3 className="text-base sm:text-xl font-black flex flex-wrap items-center gap-2">
                   <span>{selectedStockDetail.name}</span>
                   <span className="text-amber-400" dir="ltr">({selectedStockDetail.symbol})</span>
                   <span className="text-xs bg-white/10 px-2.5 py-0.5 rounded-full">
-                    {selectedStockDetail.sector}
+                    العملة: {selectedStockDetail.currency_label}
+                  </span>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full ${getEligibilityBadgeClass(selectedStockDetail.eligibility_status_ar)}`}>
+                    {selectedStockDetail.eligibility_status_ar}
                   </span>
                 </h3>
                 <p className="text-xs text-slate-300 mt-1">
-                  آخر إغلاق موثوق: {selectedStockDetail.current_price} ج.م بتاريخ {selectedStockDetail.last_bar_date} — المصدر: {selectedStockDetail.data_source}
+                  عدد الجلسات الفعلية: {selectedStockDetail.bars_count} جلسة | آخر إغلاق: {fmtVal(selectedStockDetail.current_price)} {selectedStockDetail.currency_label} بتاريخ {selectedStockDetail.last_bar_date}
                 </p>
               </div>
               <button
@@ -1025,66 +1044,64 @@ export default function LowsScreenerPage() {
               </button>
             </div>
 
-            {/* محتوى التفاصيل القابل للتمرير */}
             <div className="p-4 sm:p-6 overflow-y-auto space-y-6 text-xs sm:text-sm">
-              {/* الرسم البياني اليومي مع خطي القاع السنوي والنصف سنوي */}
               {renderPriceAndLowsChart(detailCandles, selectedStockDetail)}
 
-              {/* بطاقات موقع السعر الحالي من القيعان والقمم */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
                   <span className="text-slate-500 text-xs block">السعر الحالي</span>
                   <span className="text-lg font-black text-slate-900" dir="ltr">
-                    {selectedStockDetail.current_price} EGP
+                    {fmtVal(selectedStockDetail.current_price)} {selectedStockDetail.currency}
                   </span>
-                  <span className="text-[11px] text-slate-400 block">{selectedStockDetail.ma_position_ar}</span>
+                  <span className="text-[11px] text-slate-500 block">{selectedStockDetail.liquidity_status_ar}</span>
                 </div>
 
                 <div className="bg-rose-50 p-3.5 rounded-2xl border border-rose-200">
                   <span className="text-rose-700 text-xs block">قاع 52 أسبوعاً ({selectedStockDetail.annual_low_date})</span>
                   <span className="text-lg font-black text-rose-700" dir="ltr">
-                    {selectedStockDetail.annual_low} EGP
+                    {fmtVal(selectedStockDetail.annual_low)}
                   </span>
                   <span className="text-[11px] text-rose-600 font-bold block">
-                    يبعد السعر عنه: +{selectedStockDetail.dist_from_annual_low_pct}%
+                    البعد: {fmtVal(selectedStockDetail.dist_from_annual_low_pct, '%')}
                   </span>
                 </div>
 
                 <div className="bg-emerald-50 p-3.5 rounded-2xl border border-emerald-200">
                   <span className="text-emerald-700 text-xs block">قاع 6 أشهر ({selectedStockDetail.low_6m_date})</span>
                   <span className="text-lg font-black text-emerald-700" dir="ltr">
-                    {selectedStockDetail.low_6m} EGP
+                    {fmtVal(selectedStockDetail.low_6m)}
                   </span>
                   <span className="text-[11px] text-emerald-600 font-bold block">
-                    يبعد السعر عنه: +{selectedStockDetail.dist_from_6m_low_pct}%
+                    البعد: {fmtVal(selectedStockDetail.dist_from_6m_low_pct, '%')}
                   </span>
                 </div>
 
                 <div className="bg-indigo-50 p-3.5 rounded-2xl border border-indigo-200">
                   <span className="text-indigo-700 text-xs block">Bottom Opportunity Score</span>
                   <span className="text-lg font-black text-indigo-900" dir="ltr">
-                    {selectedStockDetail.bottom_opportunity_score} / {selectedStockDetail.max_available_score}
+                    {selectedStockDetail.bottom_opportunity_score !== null
+                      ? `${selectedStockDetail.bottom_opportunity_score} / ${selectedStockDetail.max_available_score}`
+                      : 'غير مؤهل للتقييم'}
                   </span>
                   <span className="text-[11px] text-indigo-600 font-bold block">
-                    {selectedStockDetail.score_status_ar}
+                    اكتمال البيانات الفعلي: {selectedStockDetail.data_completeness_pct}%
                   </span>
                 </div>
               </div>
 
-              {/* تفصيل نقاط التقييم الذكي الـ 100 وأسباب التصنيف */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
-                  <h4 className="font-black text-slate-900">🎯 تفصيل درجة التقييم (Bottom Opportunity Score)</h4>
+                  <h4 className="font-black text-slate-900">🎯 تفصيل النقاط (صفر لأي بيانات غير متاحة)</h4>
                   <ul className="space-y-1.5 text-xs font-bold text-slate-700">
-                    <li>• القرب من القاع السنوي/النصف سنوي: <strong dir="ltr">{selectedStockDetail.score_breakdown?.proximity_25} / 25</strong></li>
-                    <li>• جودة السيولة وقيمة التداول: <strong dir="ltr">{selectedStockDetail.score_breakdown?.liquidity_20} / 20</strong></li>
+                    <li>• القرب من القاع السنوي (15) والنصف سنوي (10): <strong dir="ltr">{selectedStockDetail.score_breakdown?.proximity_25} / 25</strong></li>
+                    <li>• جودة السيولة وقيمة التداول (20 جلسة): <strong dir="ltr">{selectedStockDetail.score_breakdown?.liquidity_20} / 20</strong></li>
                     <li>• التحسن في الاتجاه الفني: <strong dir="ltr">{selectedStockDetail.score_breakdown?.technical_trend_20} / 20</strong></li>
                     <li>
                       • جودة الوضع المالي للشركة:{' '}
                       <strong dir="ltr">
                         {selectedStockDetail.score_breakdown?.financial_quality_20 !== null
                           ? `${selectedStockDetail.score_breakdown?.financial_quality_20} / 20`
-                          : 'غير متاح (لم يتم اختلاق درجة مالية)'}
+                          : 'غير متاح (0 نقطة مضافة)'}
                       </strong>
                     </li>
                     <li>• تحسن حجم التداول: <strong dir="ltr">{selectedStockDetail.score_breakdown?.volume_improvement_10} / 10</strong></li>
@@ -1093,71 +1110,18 @@ export default function LowsScreenerPage() {
                 </div>
 
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
-                  <h4 className="font-black text-slate-900">🏷️ التصنيف وأسبابه والمؤشرات الفنية</h4>
+                  <h4 className="font-black text-slate-900">🏷️ التصنيف وأسبابه وتدقيق الحقول</h4>
                   <p className="text-xs font-black text-indigo-700">التصنيف: {selectedStockDetail.classification}</p>
                   <ul className="space-y-1 text-xs text-slate-700 font-bold">
                     {selectedStockDetail.classification_reasons_ar?.map((r, idx) => (
                       <li key={idx}>• {r}</li>
                     ))}
                   </ul>
-                  <div className="pt-2 border-t border-slate-200 grid grid-cols-3 gap-2 text-[11px] font-bold">
-                    <span>RSI(14): {selectedStockDetail.rsi_14}</span>
-                    <span>MA20: {selectedStockDetail.ma20 ?? 'N/A'}</span>
-                    <span>MA50: {selectedStockDetail.ma50 ?? 'N/A'}</span>
-                    <span>MA100: {selectedStockDetail.ma100 ?? 'N/A'}</span>
-                    <span>MA200: {selectedStockDetail.ma200 ?? 'N/A'}</span>
-                    <span>ATR(14): {selectedStockDetail.atr_14 ?? 'N/A'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* التحليل الأساسي والمالي وتنبيهات المخاطر المالية (المرحلة الثامنة) */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="font-black text-slate-900">🏦 التحليل الأساسي ونتائج الأعمال المتاحة</h4>
-                  <span className="text-xs font-bold text-slate-500">
-                    آخر قوائم مالية: {selectedStockDetail.fundamentals?.last_statement_date || 'غير متوفر'}
-                  </span>
-                </div>
-
-                {selectedStockDetail.fundamentals?.is_available ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bold">
-                    <div className="p-2.5 bg-slate-50 rounded-xl">ربحية السهم EPS: <strong dir="ltr">{selectedStockDetail.fundamentals.eps ?? 'N/A'}</strong></div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl">مضاعف الربحية P/E: <strong dir="ltr">{selectedStockDetail.fundamentals.pe_ratio ?? 'N/A'}</strong></div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl">القيمة الدفترية: <strong dir="ltr">{selectedStockDetail.fundamentals.book_value ?? 'N/A'}</strong></div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl">مضاعف الدفترية P/B: <strong dir="ltr">{selectedStockDetail.fundamentals.pb_ratio ?? 'N/A'}</strong></div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl">نمو الإيرادات: <strong dir="ltr">{selectedStockDetail.fundamentals.revenue_growth_pct !== null ? `${selectedStockDetail.fundamentals.revenue_growth_pct}%` : 'N/A'}</strong></div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl">نمو الأرباح: <strong dir="ltr">{selectedStockDetail.fundamentals.net_income_growth_pct !== null ? `${selectedStockDetail.fundamentals.net_income_growth_pct}%` : 'N/A'}</strong></div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl">هامش صافي الربح: <strong dir="ltr">{selectedStockDetail.fundamentals.profit_margin_pct !== null ? `${selectedStockDetail.fundamentals.profit_margin_pct}%` : 'N/A'}</strong></div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl">المديونية/الملكية: <strong dir="ltr">{selectedStockDetail.fundamentals.debt_to_equity_pct !== null ? `${selectedStockDetail.fundamentals.debt_to_equity_pct}%` : 'N/A'}</strong></div>
-                  </div>
-                ) : (
-                  <p className="text-xs font-bold text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
-                    ⚠️ البيانات المالية التفصيلية لهذا السهم غير متوفرة حالياً من المزود، لذلك تم تقييم السهم فنياً وسيولياً فقط (من 80 نقطة) دون افتراض أو اختلاق أي مضاعفات مالية.
-                  </p>
-                )}
-
-                {selectedStockDetail.fundamentals?.warnings_ar?.length > 0 && (
-                  <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl text-xs font-bold text-rose-800">
-                    🚨 تنبيهات مالية جوهرية: {selectedStockDetail.fundamentals.warnings_ar.join(' | ')}
-                  </div>
-                )}
-              </div>
-
-              {/* أسباب القوة وأسباب الضعف */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200">
-                  <h4 className="font-black text-emerald-900 mb-2">✅ نقاط القوة والفرص المحتملة</h4>
-                  <ul className="space-y-1 text-xs font-bold text-emerald-800">
-                    {selectedStockDetail.strengths_ar?.map((s, idx) => <li key={idx}>• {s}</li>)}
-                  </ul>
-                </div>
-
-                <div className="bg-rose-50/70 p-4 rounded-2xl border border-rose-200">
-                  <h4 className="font-black text-rose-900 mb-2">⚠️ نقاط الضعف والمخاطر (ليست توصية شراء تلقائية)</h4>
-                  <ul className="space-y-1 text-xs font-bold text-rose-800">
-                    {selectedStockDetail.weaknesses_ar?.map((w, idx) => <li key={idx}>• {w}</li>)}
-                  </ul>
+                  {selectedStockDetail.missing_fields_ar && selectedStockDetail.missing_fields_ar.length > 0 && (
+                    <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] font-bold text-amber-900">
+                      ⚠️ حقول غير مكتملة خُصمت من نسبة اكتمال البيانات: {selectedStockDetail.missing_fields_ar.join(' | ')}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1165,12 +1129,12 @@ export default function LowsScreenerPage() {
         </div>
       )}
 
-      {/* 6. نافذة التنبيهات الذكية وإعدادات تشغيلها/إيقافها (المرحلة الحادية عشرة) */}
+      {/* نافذة التنبيهات */}
       {showAlertsModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden max-h-[88vh] flex flex-col">
             <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
-              <h3 className="font-black text-base sm:text-lg">🔔 مركز تنبيهات القيعان والسيولة والانعكاس</h3>
+              <h3 className="font-black text-base sm:text-lg">🔔 مركز تنبيهات القيعان والسيولة</h3>
               <button
                 type="button"
                 onClick={() => setShowAlertsModal(false)}
@@ -1179,18 +1143,14 @@ export default function LowsScreenerPage() {
                 ✕
               </button>
             </div>
-
-            <div className="p-5 overflow-y-auto space-y-5 text-xs">
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2.5">
-                <h4 className="font-black text-slate-800 mb-2">⚙️ تفعيل أو إيقاف أنواع التنبيهات:</h4>
+            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
                 {[
-                  { key: 'near_52w_low_3pct', label: 'وصول سهم إلى مسافة ≤ 3% من قاعه السنوي (52 أسبوعاً)' },
-                  { key: 'near_6m_low_3pct', label: 'وصول سهم إلى مسافة ≤ 3% من قاعه النصف سنوي (6 أشهر)' },
-                  { key: 'unusual_liquidity', label: 'ارتفاع السيولة وحجم التداول بشكل غير معتاد (+50%)' },
-                  { key: 'rsi_improvement', label: 'ظهور تحسن واضح في زخم مؤشر RSI' },
-                  { key: 'reclaimed_ma20_or_ma50', label: 'استعادة السعر للمتوسط المتحرك MA20 أو MA50' },
-                  { key: 'resistance_breakout', label: 'اختراق مقاومة فنية قريبة' },
-                  { key: 'new_financial_results', label: 'توفر قوائم ونتائج مالية معلنة' }
+                  { key: 'near_52w_low_3pct', label: 'وصول سهم مؤهل إلى مسافة ≤ 3% من قاعه السنوي' },
+                  { key: 'near_6m_low_3pct', label: 'وصول سهم مؤهل إلى مسافة ≤ 3% من قاعه النصف سنوي' },
+                  { key: 'unusual_liquidity', label: 'ارتفاع السيولة بشكل غير معتاد (+50%)' },
+                  { key: 'rsi_improvement', label: 'ظهور تحسن في مؤشر RSI' },
+                  { key: 'reclaimed_ma20_or_ma50', label: 'استعادة السعر MA20 أو MA50' }
                 ].map((al) => (
                   <label key={al.key} className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
                     <input
@@ -1208,28 +1168,6 @@ export default function LowsScreenerPage() {
                 >
                   حفظ إعدادات التنبيهات
                 </button>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="font-black text-slate-800">⚡ التنبيهات النشطة المرصودة حالياً ({activeAlerts.length}):</h4>
-                {activeAlerts.length === 0 ? (
-                  <p className="text-slate-400 font-bold">لا توجد تنبيهات نشطة حالياً أو لم يكتمل الفحص بعد.</p>
-                ) : (
-                  activeAlerts.map((al, idx) => (
-                    <div key={idx} className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start justify-between gap-2">
-                      <div>
-                        <span className="font-black text-indigo-900">{al.name} ({al.symbol}) — {al.title_ar}</span>
-                        <p className="text-slate-700 font-bold mt-0.5">{al.message_ar}</p>
-                      </div>
-                      <Link
-                        href={`/?symbol=${al.symbol}`}
-                        className="bg-white border border-slate-300 px-2.5 py-1 rounded-lg font-black text-slate-800 shrink-0"
-                      >
-                        فتح السهم
-                      </Link>
-                    </div>
-                  ))
-                )}
               </div>
             </div>
           </div>
